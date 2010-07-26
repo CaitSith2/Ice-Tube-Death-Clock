@@ -33,6 +33,7 @@ THE SOFTWARE.
 #include "iv.h"
 #include "util.h"
 #include "fonttable.h"
+#include "deathclock.h"
 
 uint8_t region = REGION_US;
 

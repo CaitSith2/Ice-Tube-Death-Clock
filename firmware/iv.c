@@ -42,6 +42,7 @@ volatile uint8_t time_s, time_m, time_h;
 // ... and current date
 volatile uint8_t date_m, date_d, date_y;
 
+
 // how loud is the speaker supposed to be?
 volatile uint8_t volume;
 
@@ -50,6 +51,8 @@ volatile uint8_t alarm_on, alarming, alarm_h, alarm_m;
 
 // what is being displayed on the screen? (eg time, date, menu...)
 volatile uint8_t displaymode;
+// what to display when finished operations? (time, death clock)
+volatile uint8_t last_displaymode=SHOW_TIME;
 
 // are we in low power sleep mode?
 volatile uint8_t sleepmode = 0;
@@ -113,7 +116,7 @@ void setsnooze(void) {
   display_str("snoozing");
   displaymode = SHOW_SNOOZE;
   delayms(1000);
-  displaymode = SHOW_TIME;
+  displaymode = last_displaymode;
 }
 
 // we reset the watchdog timer 
@@ -302,6 +305,25 @@ void load_etd(void)
   minutes_left = result;
 }
 
+void display_etd(uint32_t result)
+{
+	display[8] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[7] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[6] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[5] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[4] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[3] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[2] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[1] = pgm_read_byte(numbertable_p + (result % 10));
+}
+
 // This variable keeps track of whether we have not pressed any
 // buttons in a few seconds, and turns off the menu display
 volatile uint8_t timeoutcounter = 0;
@@ -381,27 +403,11 @@ SIGNAL (TIMER2_OVF_vect) {
       display[0] |= 0x2;
     else 
       display[0] &= ~0x2;
-    
   }
   if (displaymode == SHOW_DEATHCLOCK) {
     uint32_t result;
-    load_etd();
     result = minutes_left;
-    display[8] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[7] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[6] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[5] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[4] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[3] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[2] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[1] = pgm_read_byte(numbertable_p + (result % 10));
+    display_etd(result);
 	result = 59 - time_s;
 	if(result & 32)
 		display[3] |= 1;
@@ -415,6 +421,10 @@ SIGNAL (TIMER2_OVF_vect) {
 		display[7] |= 1;
 	if(result & 1)
 		display[8] |= 1;
+	if (alarm_on)
+      display[0] |= 0x2;
+    else 
+      display[0] &= ~0x2;
 	
   }
   if (alarm_on && (alarm_h == time_h) && (alarm_m == time_m) && (time_s == 0)) {
@@ -681,6 +691,7 @@ int main(void) {
       just_pressed = 0;
       switch(displaymode) {
       case (SHOW_TIME):
+      case (SHOW_DEATHCLOCK):
 	displaymode = SET_ALARM;
 	display_str("set alarm");
 	set_alarm();
@@ -724,7 +735,7 @@ int main(void) {
 	break;
 	*/
       default:
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
       }
     } else if (just_pressed & 0x2) {
       just_pressed = 0;
@@ -735,13 +746,15 @@ int main(void) {
       delayms(1500);
       kickthedog();
 
-      displaymode = SHOW_TIME;
+      displaymode = last_displaymode;
     } else if (just_pressed & 0x4) {	//One of these will be used to switch between displaying time and deathclock count down.
       just_pressed = 0;
-      if(displaymode == SHOW_TIME)
-        displaymode = SHOW_DEATHCLOCK;
+      if(last_displaymode == SHOW_TIME)
+        last_displaymode = SHOW_DEATHCLOCK;
       else
-      	displaymode = SHOW_TIME;
+      	last_displaymode = SHOW_TIME;
+      displaymode = last_displaymode;
+      load_etd();
     } 
   }
 }
@@ -771,7 +784,7 @@ void set_alarm(void)
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;     
+      displaymode = last_displaymode;     
       alarm_h = hour;
       alarm_m = min;
       eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);    
@@ -797,7 +810,7 @@ void set_alarm(void)
 	alarm_m = min;
 	eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);    
 	eeprom_write_byte((uint8_t *)EE_ALARM_MIN, alarm_m);    
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	return;
       }
     }
@@ -844,7 +857,7 @@ void set_time(void)
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;     
+      displaymode = last_displaymode;     
       return;
     }
     if (just_pressed & 0x2) {
@@ -874,7 +887,7 @@ void set_time(void)
 	time_h = hour;
 	time_m = min;
 	time_s = sec;
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	return;
       }
     }
@@ -924,7 +937,7 @@ void set_date(void) {
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;     
+      displaymode = last_displaymode;     
       return;
     }
     if (just_pressed & 0x1) { // mode change
@@ -964,7 +977,7 @@ void set_date(void) {
 	displaymode = NONE;
 	display_date(DATE);
 	delayms(1500);
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	return;
       }
     }
@@ -1028,7 +1041,7 @@ void set_brightness(void) {
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;     
+      displaymode = last_displaymode;     
       eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
       return;
     }
@@ -1046,7 +1059,7 @@ void set_brightness(void) {
 	display[7] = pgm_read_byte(numbertable_p + (brightness / 10)) | 0x1;
 	display[8] = pgm_read_byte(numbertable_p + (brightness % 10)) | 0x1;
       } else {	
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
 	return;
       }
@@ -1159,7 +1172,7 @@ void set_deathclock(void) {
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;
+      displaymode = last_displaymode;
       date_d = day_t; date_m = month_t; date_y = year_t; return;
     }
     if (just_pressed & 0x1) { // mode change
@@ -1265,23 +1278,9 @@ void set_deathclock(void) {
 	result -= (time_h * 60);
 	result -= (time_m);
 	minutes_left = result;
-	display[8] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[7] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[6] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[5] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[4] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[3] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[2] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[1] = pgm_read_byte(numbertable_p + (result % 10));
+	display_etd(result);
 	delayms(1500);
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	date_d = day_t; date_m = month_t; date_y = year_t; return;
       }
     }
@@ -1443,7 +1442,7 @@ void set_volume(void) {
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;     
+      displaymode = last_displaymode;     
       return;
     }
     if (just_pressed & 0x1) { // mode change
@@ -1465,7 +1464,7 @@ void set_volume(void) {
 	display[7] |= 0x1;
 	display[8] |= 0x1;
       } else {	
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	return;
       }
     }
@@ -1505,7 +1504,7 @@ void set_region(void) {
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;     
+      displaymode = last_displaymode;     
       return;
     }
     if (just_pressed & 0x1) { // mode change
@@ -1523,7 +1522,7 @@ void set_region(void) {
 	  display_str("eur-24hr");
 	}
       } else {	
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	return;
       }
     }
@@ -1557,7 +1556,7 @@ void set_snooze(void) {
       // timeout w/no buttons pressed after 3 seconds?
     } else if (!timeoutcounter) {
       //timed out!
-      displaymode = SHOW_TIME;     
+      displaymode = last_displaymode;     
       return;
     }
     if (just_pressed & 0x1) { // mode change
@@ -1574,7 +1573,7 @@ void set_snooze(void) {
 	display[1] = pgm_read_byte(numbertable_p + (snooze / 10)) | 0x1;
 	display[2] = pgm_read_byte(numbertable_p + (snooze % 10)) | 0x1;
       } else { 
-	displaymode = SHOW_TIME;
+	displaymode = last_displaymode;
 	return;
       }
     }
@@ -1656,7 +1655,7 @@ void setalarmstate(void) {
       display_alarm(alarm_h, alarm_m);
       delayms(1000);
       // after a second, go back to clock mode
-      displaymode = SHOW_TIME;
+      displaymode = last_displaymode;
     }
   } else {
     if (alarm_on) {
@@ -1950,6 +1949,17 @@ void display_time(uint8_t h, uint8_t m, uint8_t s) {
 
 // Kinda like display_time but just hours and minutes
 void display_alarm(uint8_t h, uint8_t m){ 
+  if((last_displaymode == SHOW_DEATHCLOCK) && (displaymode != SET_ALARM))
+  {
+  	  uint32_t result = minutes_left;
+  	  if((time_h > h) || ((time_h == h) && (time_m > m)))
+  	  	result -= ((((h * 60) + m) + 1440) - ((time_h * 60) + time_m));
+      else
+      	result -= (((h * 60) + m) - ((time_h * 60) + time_m));
+      display_etd(result);
+  	  return;
+  }
+  
   display[8] = 0;
   display[7] = 0;
   display[6] = 0;

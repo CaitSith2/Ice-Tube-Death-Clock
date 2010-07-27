@@ -95,6 +95,7 @@ void set_brightness(void);
 void set_volume(void);
 void set_region(void);
 void set_snooze(void); // not activated by default
+void set_deathclock(void);
 
 void beep(uint16_t freq, uint8_t times);
 void tick(void);

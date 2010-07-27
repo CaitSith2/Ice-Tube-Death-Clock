@@ -121,6 +121,7 @@ void spi_xfer(uint8_t c);
 #define SHOW_SNOOZE 9
 #define SET_SNOOZE 10
 #define SET_DEATHCLOCK 11
+#define SHOW_DEATHCLOCK 12
 
 // sub-mode settings
 #define SHOW_MENU 0

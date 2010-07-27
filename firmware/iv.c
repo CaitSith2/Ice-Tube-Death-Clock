@@ -278,6 +278,30 @@ SIGNAL(SIG_PIN_CHANGE0) {
   PCICR = _BV(PCIE0) | _BV(PCIE2);
 }
 
+volatile uint32_t minutes_left=0;
+
+void load_etd(void)
+{
+  uint32_t result = ETD(  eeprom_read_byte((uint8_t *)EE_DOB_MONTH),
+      	                      eeprom_read_byte((uint8_t *)EE_DOB_DAY),
+      	                      eeprom_read_byte((uint8_t *)EE_DOB_YEAR)+1900,
+      	                      eeprom_read_byte((uint8_t *)EE_SET_MONTH),
+      	                      eeprom_read_byte((uint8_t *)EE_SET_DAY),
+      	                      eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
+      	                      eeprom_read_byte((uint8_t *)EE_GENDER),
+      	                      eeprom_read_byte((uint8_t *)EE_DC_MODE),
+      	                      BodyMassIndex( eeprom_read_byte((uint8_t *)EE_BMI_UNIT), eeprom_read_word((uint16_t *)EE_BMI_HEIGHT), eeprom_read_word((uint16_t *)EE_BMI_WEIGHT)),
+      	                      eeprom_read_byte((uint8_t *)EE_SMOKER));
+      result /= 60;
+      result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
+      	                   eeprom_read_byte((uint8_t *)EE_SET_DAY),
+      	                   eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
+      	                   date_m,date_d,date_y+2000) * 1440;
+	  result -= (time_h * 60);
+	  result -= (time_m);
+  minutes_left = result;
+}
+
 // This variable keeps track of whether we have not pressed any
 // buttons in a few seconds, and turns off the menu display
 volatile uint8_t timeoutcounter = 0;
@@ -293,6 +317,8 @@ SIGNAL (TIMER2_OVF_vect) {
   if (time_s >= 60) {
     time_s = 0;
     time_m++;
+    if(minutes_left>0)
+      minutes_left--;
   }
 
   // an hour...
@@ -356,6 +382,40 @@ SIGNAL (TIMER2_OVF_vect) {
     else 
       display[0] &= ~0x2;
     
+  }
+  if (displaymode == SHOW_DEATHCLOCK) {
+    uint32_t result;
+    load_etd();
+    result = minutes_left;
+    display[8] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[7] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[6] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[5] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[4] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[3] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[2] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[1] = pgm_read_byte(numbertable_p + (result % 10));
+	result = 59 - time_s;
+	if(result & 32)
+		display[3] |= 1;
+	if(result & 16)
+		display[4] |= 1;
+	if(result & 8)
+		display[5] |= 1;
+	if(result & 4)
+		display[6] |= 1;
+	if(result & 2)
+		display[7] |= 1;
+	if(result & 1)
+		display[8] |= 1;
+	
   }
   if (alarm_on && (alarm_h == time_h) && (alarm_m == time_m) && (time_s == 0)) {
     DEBUGP("alarm on!");
@@ -523,7 +583,6 @@ void initbuttons(void) {
 }
 
 
-
 int main(void) {
   //  uint8_t i;
   uint8_t mcustate;
@@ -679,12 +738,10 @@ int main(void) {
       displaymode = SHOW_TIME;
     } else if (just_pressed & 0x4) {	//One of these will be used to switch between displaying time and deathclock count down.
       just_pressed = 0;
-      displaymode = NONE;
-      display_date(DAY);
-
-      kickthedog();
-      delayms(1500);
-      kickthedog();
+      if(displaymode == SHOW_TIME)
+        displaymode = SHOW_DEATHCLOCK;
+      else
+      	displaymode = SHOW_TIME;
     } 
   }
 }
@@ -1155,7 +1212,7 @@ void set_deathclock(void) {
         display_str("normal  ");
         break;
       case DC_mode_pessimistic:
-        display_str("pessimis");
+        display_str("pessimst");
         break;
       case DC_mode_optimistic:
         display_str("optimist");
@@ -1199,6 +1256,30 @@ void set_deathclock(void) {
     //We now calculate Estimated Time of Death, and display it, in minutes left to live format.
 	/*displaymode = NONE;
 	display_date(DATE);*/
+	displaymode = NONE;
+	uint32_t result = ETD(date_m, date_d, date_y+1900, month_t, day_t, year_t + 2000, gender, dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker );
+	eeprom_write_byte((uint8_t*)EE_SET_DAY,day_t);
+    eeprom_write_byte((uint8_t*)EE_SET_MONTH,month_t);
+    eeprom_write_byte((uint8_t*)EE_SET_YEAR,year_t);
+	result /= 60;
+	result -= (time_h * 60);
+	result -= (time_m);
+	minutes_left = result;
+	display[8] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[7] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[6] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[5] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[4] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[3] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[2] = pgm_read_byte(numbertable_p + (result % 10));
+	result /= 10;
+	display[1] = pgm_read_byte(numbertable_p + (result % 10));
 	delayms(1500);
 	displaymode = SHOW_TIME;
 	date_d = day_t; date_m = month_t; date_y = year_t; return;
@@ -1267,7 +1348,7 @@ void set_deathclock(void) {
     		  display_str("normal  ");
     		  break;
     		case DC_mode_pessimistic:
-    		  display_str("pessimis");
+    		  display_str("pessimst");
     		  break;
     		case DC_mode_optimistic:
     		  display_str("optimist");

@@ -91,7 +91,7 @@ uint8_t is_leap_year ( uint16_t year )
   return 0;
 }
 
-int date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2, uint8_t day2, uint8_t year2 )
+uint32_t date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2, uint8_t day2, uint8_t year2 )
 {
   int diff = 0;
   int i;
@@ -160,7 +160,8 @@ uint8_t BodyMassIndex ( uint8_t unit, uint16_t height, uint16_t weight )
 
 uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t month, uint8_t day, uint8_t year, uint8_t Gender, uint8_t Mode, uint8_t BMI, uint8_t Smoker )
 {
-  int diff,y,days,i,bmi;
+  int y,i,bmi;
+  uint32_t diff, days;
   diff = date_diff(DOB_month,DOB_day,DOB_year,month,day,year);
   y = (diff * 100) / 36525;
   if (Gender == DC_gender_male)

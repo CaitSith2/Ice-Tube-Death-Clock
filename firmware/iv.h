@@ -34,6 +34,7 @@ THE SOFTWARE.
 // date format
 #define DATE 0  // mm-dd-yy
 #define DAY 1   // thur jan 1
+#define YEAR 2  // mmddyyyy
 
 #define DISPLAYSIZE 9
 
@@ -58,6 +59,19 @@ THE SOFTWARE.
 #define EE_VOLUME 10
 #define EE_REGION 11
 #define EE_SNOOZE 12
+#define EE_DEATHCLOCK_ON 13
+#define EE_DOB_MONTH 14 //Death Clock variables are preserved in the event of an extended power outage.
+#define EE_DOB_DAY 15
+#define EE_DOB_YEAR 16
+#define EE_SET_MONTH 17
+#define EE_SET_DAY 18
+#define EE_SET_YEAR 19
+#define EE_GENDER 20
+#define EE_DC_MODE 21
+#define EE_BMI_UNIT 22
+#define EE_BMI_WEIGHT 23
+#define EE_BMI_HEIGHT 25
+#define EE_SMOKER 27
 
 void delay(uint16_t delay);
 
@@ -106,6 +120,7 @@ void spi_xfer(uint8_t c);
 #define SET_REGION 8
 #define SHOW_SNOOZE 9
 #define SET_SNOOZE 10
+#define SET_DEATHCLOCK 11
 
 // sub-mode settings
 #define SHOW_MENU 0
@@ -123,6 +138,13 @@ void spi_xfer(uint8_t c);
 #define SET_VOL 1
 //region
 #define SET_REG 1
+
+#define SET_GENDER 4
+#define SET_DC_MODE 5
+#define SET_BMI_UNIT 6
+#define SET_BMI_WEIGHT 7
+#define SET_BMI_HEIGHT 8
+#define SET_SMOKER 9
 
 #define BOOST PD6
 #define BOOST_DDR DDRD

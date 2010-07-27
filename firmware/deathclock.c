@@ -8,7 +8,7 @@
 
 #include "deathclock.h"
 
-uint8_t normal_bmi_male[6][23] = {
+const uint8_t normal_bmi_male[6][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
   { 40,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,8 },
   { 50,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,4,4,4,5,5,5,7 },
@@ -17,7 +17,7 @@ uint8_t normal_bmi_male[6][23] = {
   { 80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5 }
 };
 
-uint8_t normal_bmi_female[7][23] = {
+const uint8_t normal_bmi_female[7][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
   { 30,0,0,0,1,1,1,1,2,2,3,3,3,4,4,5,5,6,6,7,7,8,13 },
   { 40,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,5,5,6,6,6,7,11 },
@@ -27,18 +27,18 @@ uint8_t normal_bmi_female[7][23] = {
   { 80,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2 }
 };
 
-uint8_t sadistic_bmi_male[2][23] = {
+const uint8_t sadistic_bmi_male[2][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
   { 40,0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,2,3,3,4 }
 };
 
-uint8_t sadistic_bmi_female[3][23] = {
+const uint8_t sadistic_bmi_female[3][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
   { 30,0,0,0,0,0,0,0,1,1,1,1,1,2,2,2,2,3,3,3,3,4,6 },
   { 40,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,3,3,3,3,5 }
 };
 
-uint16_t normal_smoking_male[11][2] = {
+const uint16_t normal_smoking_male[11][2] PROGMEM = {
   { 25,0 },
   { 30,2739 },
   { 35,2703 },
@@ -52,7 +52,7 @@ uint16_t normal_smoking_male[11][2] = {
   { 80,1205 }
 };
 
-uint16_t normal_smoking_female[10][2] = {
+const uint16_t normal_smoking_female[10][2] PROGMEM = {
   { 25, 0 },
   { 30, 2367 },
   { 45, 2331 },
@@ -65,20 +65,20 @@ uint16_t normal_smoking_female[10][2] = {
   { 80, 1096 }
 };
 
-uint16_t sadistic_smoking_male[3][2] = {
+const uint16_t sadistic_smoking_male[3][2] PROGMEM = {
   { 25, 0 },
   { 30, 1278 },
   { 40, 1242 }
 };
 
-uint16_t sadistic_smoking_female[3][2] = {
+const uint16_t sadistic_smoking_female[3][2] PROGMEM = {
   { 25, 0 },
   { 30, 1424 },
   { 40, 1388 }
 };
 
 
-uint8_t day_in_month[12]={31,28,31,30,31,30,31,31,30,31,30,31};
+const uint8_t day_in_month[12] PROGMEM = {31,28,31,30,31,30,31,31,30,31,30,31};
 
 uint8_t is_leap_year ( uint16_t year )
 {
@@ -103,24 +103,24 @@ int date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2, uin
     return day2 - day1;
   if(year1==year2)
   {
-    diff = day_in_month[month1-1] - day1;
+    diff = pgm_read_byte(&day_in_month[month1-1]) - day1;
     if(month1 == 2)
       diff += is_leap_year(year1);
     for(i=month1+1;i<month2;i++)
     {
-      diff+=day_in_month[i-1];
+      diff+=pgm_read_byte(&day_in_month[i-1]);
       if(i==2)
         diff+=is_leap_year(year1);
     }
     diff += day2;
     return diff;
   }
-  diff = day_in_month[month1-1] - day1;
+  diff = pgm_read_byte(&day_in_month[month1-1]) - day1;
   if(month1 == 2)
       diff+=is_leap_year(year1);
   for(i=month1+1;i<=12;i++)
   {
-    diff+=day_in_month[i-1];
+    diff+=pgm_read_byte(&day_in_month[i-1]);
     if(i==2)
       diff+=is_leap_year(year1);
   }
@@ -128,7 +128,7 @@ int date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2, uin
     diff+=365+is_leap_year(i);
   for(i=1;i<month2;i++)
   {
-    diff+=day_in_month[i-1];
+    diff+=pgm_read_byte(&day_in_month[i-1]);
     if(i==2)
       diff+=is_leap_year(year2);
   }
@@ -138,15 +138,23 @@ int date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2, uin
 
 uint8_t BodyMassIndex ( uint8_t unit, uint16_t height, uint16_t weight )
 {
+  uint16_t bmi;
   if ( unit == BMI_Imperial )
   {
     //Imperial, Weight in pounds, Height in inches
-    return (weight * 703) / (height * height);
+    bmi = (weight * 703) / (height * height);
+    return (bmi > 255) ? 255 : bmi;
+  }
+  else if ( unit == BMI_Metric )
+  {
+    //Metric, Weight in Kilograms, Height in centimeters
+    bmi = (weight * 10000) / (height * height);
+    return (bmi > 255) ? 255 : bmi;
   }
   else
   {
-    //Metric, Weight in Kilograms, Height in centimeters
-    return (weight * 10000) / (height * height);
+  	  //User knows their BMI, so it is entered directly.
+  	  return weight & 0xFF;
   }
 }
 
@@ -174,17 +182,17 @@ uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t mon
       if ( Smoker == DC_smoker )
         for(i=0;i<3;i++)
         {
-          if( y < sadistic_smoking_male[i][0] )
+          if( y < pgm_read_word(&sadistic_smoking_male[i][0]) )
           {
-            days -= sadistic_smoking_male[i][1]*100;
+            days -= pgm_read_word(&sadistic_smoking_male[i][1])*100;
             break;
           }
         }
       for(i=0;i<2;i++)
       {
-        if ( y < sadistic_bmi_male[i][0] )
+        if ( y < pgm_read_byte(&sadistic_bmi_male[i][0]) )
         {
-          days -= (sadistic_bmi_male[i][bmi+1] * 36525);
+          days -= (pgm_read_byte(&sadistic_bmi_male[i][bmi+1]) * 36525);
           break;
         }
       }
@@ -195,17 +203,17 @@ uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t mon
       if ( Smoker == DC_smoker )
         for(i=0;i<3;i++)
         {
-          if( y < sadistic_smoking_female[i][0] )
+          if( y < pgm_read_word(&sadistic_smoking_female[i][0]) )
           {
-            days -= sadistic_smoking_female[i][1]*100;
+            days -= pgm_read_word(&sadistic_smoking_female[i][1])*100;
             break;
           }
         }
       for(i=0;i<3;i++)
       {
-        if ( y < sadistic_bmi_female[i][0] )
+        if ( y < pgm_read_byte(&sadistic_bmi_female[i][0]) )
         {
-          days -= (sadistic_bmi_female[i][bmi+1] * 36525);
+          days -= (pgm_read_byte(&sadistic_bmi_female[i][bmi+1]) * 36525);
           break;
         }
       }
@@ -218,17 +226,17 @@ uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t mon
       if ( Smoker == DC_smoker )
         for(i=0;i<11;i++)
         {
-          if( y < normal_smoking_male[i][0] )
+          if( y < pgm_read_word(&normal_smoking_male[i][0]) )
           {
-            days -= normal_smoking_male[i][1]*100;
+            days -= pgm_read_word(&normal_smoking_male[i][1])*100;
             break;
           }
         }
       for(i=0;i<6;i++)
       {
-        if ( y < normal_bmi_male[i][0] )
+        if ( y < pgm_read_byte(&normal_bmi_male[i][0]) )
         {
-          days -= (normal_bmi_male[i][bmi+1] * 36525);
+          days -= (pgm_read_byte(&normal_bmi_male[i][bmi+1]) * 36525);
           break;
         }
       }
@@ -238,17 +246,17 @@ uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t mon
       if ( Smoker == DC_smoker )
         for(i=0;i<10;i++)
         {
-          if( y < normal_smoking_female[i][0] )
+          if( y < pgm_read_word(&normal_smoking_female[i][0]) )
           {
-            days -= normal_smoking_female[i][1]*100;
+            days -= pgm_read_word(&normal_smoking_female[i][1])*100;
             break;
           }
         }
       for(i=0;i<7;i++)
       {
-        if ( y < normal_bmi_female[i][0] )
+        if ( y < pgm_read_byte(&normal_bmi_female[i][0]) )
         {
-          days -= (normal_bmi_female[i][bmi+1] * 36525);
+          days -= (pgm_read_byte(&normal_bmi_female[i][bmi+1]) * 36525);
           break;
         }
       }

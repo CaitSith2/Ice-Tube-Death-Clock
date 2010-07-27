@@ -652,8 +652,13 @@ int main(void) {
 	display_str("set regn");
 	set_region();
 	break;
+	  case (SET_REGION):
+	displaymode = SET_DEATHCLOCK;
+	display_str("deathclk");
+	set_deathclock();
+	break;
 	/*
-      case (SET_REGION):
+      case (SET_DEATHCLOCK):
 	displaymode = SET_SNOOZE;
 	display_str("set snoz");
 	set_snooze();
@@ -662,7 +667,7 @@ int main(void) {
       default:
 	displaymode = SHOW_TIME;
       }
-    } else if ((just_pressed & 0x2) || (just_pressed & 0x4)) {
+    } else if (just_pressed & 0x2) {
       just_pressed = 0;
       displaymode = NONE;
       display_date(DAY);
@@ -671,7 +676,15 @@ int main(void) {
       delayms(1500);
       kickthedog();
 
-      displaymode = SHOW_TIME;     
+      displaymode = SHOW_TIME;
+    } else if (just_pressed & 0x4) {	//One of these will be used to switch between displaying time and deathclock count down.
+      just_pressed = 0;
+      displaymode = NONE;
+      display_date(DAY);
+
+      kickthedog();
+      delayms(1500);
+      kickthedog();
     } 
   }
 }
@@ -1021,6 +1034,318 @@ void set_brightness(void) {
       }
     }
   }
+}
+
+//display[1] = pgm_read_byte(numbertable_p + (date_m / 10));
+void display_bmi_weight(uint8_t unit, uint16_t weight)
+{
+  display[0] = 0;
+  if(unit==BMI_Imperial)
+  	display_str("    lbs ");
+  else if (unit==BMI_Metric)
+    display_str("    kg  ");
+  else
+    display_str("    bmi ");
+  display[1] = pgm_read_byte(numbertable_p + (weight / 100));
+  display[2] = pgm_read_byte(numbertable_p + ((weight % 100) / 10));
+  display[3] = pgm_read_byte(numbertable_p + (weight % 10));
+}
+
+void display_bmi_height(uint8_t unit, uint16_t height)
+{
+  display[0] = 0;
+  if(unit==BMI_Imperial)
+  {
+  	display_str("   ft   ");
+  	display[1] = pgm_read_byte(numbertable_p + ((height / 12) / 10));
+  	display[2] = pgm_read_byte(numbertable_p + ((height / 12) % 10));
+  	display[7] = pgm_read_byte(numbertable_p + ((height % 12) / 10));
+  	display[8] = pgm_read_byte(numbertable_p + ((height % 12) % 10));
+  }
+  else
+  {
+    display_str("    cm  ");
+    display[1] = pgm_read_byte(numbertable_p + (height / 100));
+    display[2] = pgm_read_byte(numbertable_p + ((height % 100) / 10));
+    display[3] = pgm_read_byte(numbertable_p + (height % 10));
+  }
+}
+
+void set_deathclock(void) {
+  uint8_t mode = SHOW_MENU;
+  timeoutcounter = INACTIVITYTIMEOUT;;  
+  uint8_t day_t, month_t, year_t;
+  day_t = date_d;
+  month_t = date_m;
+  year_t = date_y;
+  uint8_t gender, dc_mode, bmi_unit, smoker;
+  uint16_t bmi_weight, bmi_height;
+  
+  gender = eeprom_read_byte((uint8_t *)EE_GENDER);
+  dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
+  date_d = eeprom_read_byte((uint8_t *)EE_DOB_DAY);
+  date_m = eeprom_read_byte((uint8_t *)EE_DOB_MONTH);
+  date_y = eeprom_read_byte((uint8_t *)EE_DOB_YEAR);
+  bmi_unit = eeprom_read_byte((uint8_t *)EE_BMI_UNIT);
+  smoker = eeprom_read_byte((uint8_t *)EE_SMOKER);
+  bmi_weight = eeprom_read_word((uint16_t *)EE_BMI_WEIGHT);
+  bmi_height = eeprom_read_word((uint16_t *)EE_BMI_HEIGHT);
+  //eeprom_write_byte((uint8_t*)EE_SET_DAY,day_t);
+  //eeprom_write_byte((uint8_t*)EE_SET_MONTH,month_t);
+  //eeprom_write_byte((uint8_t*)EE_SET_YEAR,year_t);
+  
+  
+
+  while (1) {
+    if (just_pressed || pressed) {
+      timeoutcounter = INACTIVITYTIMEOUT;;  
+      // timeout w/no buttons pressed after 3 seconds?
+    } else if (!timeoutcounter) {
+      //timed out!
+      displaymode = SHOW_TIME;
+      date_d = day_t; date_m = month_t; date_y = year_t; return;
+    }
+    if (just_pressed & 0x1) { // mode change
+      date_d = day_t; date_m = month_t; date_y = year_t; return;
+    }
+    if (just_pressed & 0x2) {
+
+      just_pressed = 0;
+      if (mode == SHOW_MENU) {
+	// start!
+	if (region == REGION_US) {
+	  mode = SET_MONTH;
+	}
+	else {
+	  DEBUGP("Set day");
+	  mode = SET_DAY;
+	}
+	display_date(YEAR);
+	display[1] |= 0x1;
+	display[2] |= 0x1;
+      } else if (((mode == SET_MONTH) && (region == REGION_US)) ||
+		 ((mode == SET_DAY) && (region == REGION_EU))) {
+	if (region == REGION_US)
+	  mode = SET_DAY;
+	else
+	  mode = SET_MONTH;
+	display_date(YEAR);
+	display[3] |= 0x1;
+	display[4] |= 0x1;
+      } else if (((mode == SET_DAY) && (region == REGION_US)) ||
+	((mode == SET_MONTH) && (region == REGION_EU))) {
+	mode = SET_YEAR;
+	display_date(YEAR);
+	display[5] |= 0x1;
+	display[6] |= 0x1;
+	display[7] |= 0x1;
+	display[8] |= 0x1;
+	  } else if (mode == SET_YEAR) {
+	mode = SET_GENDER;
+	if(gender)
+      display_str("female  ");
+    else
+      display_str("male    ");
+      } else if (mode == SET_GENDER) {
+    mode = SET_DC_MODE;
+    switch(dc_mode)
+    {
+      case DC_mode_normal:
+      default:
+        display_str("normal  ");
+        break;
+      case DC_mode_pessimistic:
+        display_str("pessimis");
+        break;
+      case DC_mode_optimistic:
+        display_str("optimist");
+        break;
+      case DC_mode_sadistic:
+        display_str("sadistic");
+        break;
+    }
+      } else if (mode == SET_DC_MODE) {
+    mode = SET_BMI_UNIT;
+    if(bmi_unit == BMI_Imperial)
+      display_str("imperial");
+    else if (bmi_unit == BMI_Metric)
+      display_str("metric  ");
+    else
+      display_str("direct  ");
+      } else if (mode == SET_BMI_UNIT) {
+    mode = SET_BMI_WEIGHT;
+    display_bmi_weight(bmi_unit,bmi_weight);
+      } else if (mode == SET_BMI_WEIGHT) {
+    if(bmi_unit != BMI_Direct)
+    {
+      mode = SET_BMI_HEIGHT;
+      display_bmi_height(bmi_unit,bmi_height);
+    }
+    else
+    {
+      mode = SET_SMOKER;
+      if(smoker)
+        display_str("smoker  ");
+      else
+        display_str("non smkr");
+    }
+      } else if (mode == SET_BMI_HEIGHT) {
+    mode = SET_SMOKER;
+    if(smoker)
+      display_str("smoker  ");
+    else
+      display_str("non smkr");
+      } else {
+    //We now calculate Estimated Time of Death, and display it, in minutes left to live format.
+	/*displaymode = NONE;
+	display_date(DATE);*/
+	delayms(1500);
+	displaymode = SHOW_TIME;
+	date_d = day_t; date_m = month_t; date_y = year_t; return;
+      }
+    }
+    if ((just_pressed & 0x4) || (pressed & 0x4)) {
+      just_pressed = 0;
+      if (mode == SET_MONTH) {
+	date_m++;
+	if (date_m >= 13)
+	  date_m = 1;
+	display_date(YEAR);
+	if (region == REGION_US) {
+	  display[1] |= 0x1;
+	  display[2] |= 0x1;
+	} else {
+	  display[3] |= 0x1;
+	  display[4] |= 0x1;
+	}
+	eeprom_write_byte((uint8_t *)EE_DOB_MONTH, date_m);    
+      }
+      if (mode == SET_DAY) {
+	date_d++;
+	if (date_d > 31)
+	  date_d = 1;
+	display_date(YEAR);
+
+	if (region == REGION_EU) {
+	  display[1] |= 0x1;
+	  display[2] |= 0x1;
+	} else {
+	  display[3] |= 0x1;
+	  display[4] |= 0x1;
+	}
+	eeprom_write_byte((uint8_t *)EE_DOB_DAY, date_d);    
+      }
+      if (mode == SET_YEAR) {
+	date_y++;
+	date_y %= 100;
+	display_date(YEAR);
+	display[5] |= 0x1;
+	display[6] |= 0x1;
+	display[7] |= 0x1;
+	display[8] |= 0x1;
+	eeprom_write_byte((uint8_t *)EE_DOB_YEAR, date_y);    
+      }
+    if (mode == SET_GENDER)
+    {
+    	gender = !gender;
+    	
+    	if(gender)
+    		display_str("female  ");
+    	else
+    		display_str("male    ");
+    	eeprom_write_byte((uint8_t *)EE_GENDER, gender);
+    }
+    if (mode == SET_DC_MODE)
+    {
+    	dc_mode++;
+    	dc_mode %= 4;
+    	
+    	switch(dc_mode)
+    	{
+    		case DC_mode_normal:
+    		default:
+    		  display_str("normal  ");
+    		  break;
+    		case DC_mode_pessimistic:
+    		  display_str("pessimis");
+    		  break;
+    		case DC_mode_optimistic:
+    		  display_str("optimist");
+    		  break;
+    		case DC_mode_sadistic:
+    		  display_str("sadistic");
+    		  break;
+    	}
+    	eeprom_write_byte((uint8_t *)EE_DC_MODE, dc_mode);
+    }
+    if (mode == SET_BMI_UNIT)
+    {
+    	bmi_unit++;
+    	if(bmi_unit > 2)
+    		bmi_unit=0;
+    	if(bmi_unit == BMI_Imperial)
+    		display_str("imperial");
+    	else if (bmi_unit == BMI_Metric)
+    		display_str("metric  ");
+    	else
+    		display_str("direct  ");
+    	eeprom_write_byte((uint8_t *)EE_BMI_UNIT, bmi_unit);
+    }
+    if (mode == SET_BMI_WEIGHT)
+    {
+    	if(bmi_unit == BMI_Imperial)
+    	{
+    		bmi_weight += 5;
+    		if(bmi_weight > 660)
+    			bmi_weight = 35;
+    	}
+    	else if (bmi_unit == BMI_Metric)
+    	{
+    		bmi_weight += 3;
+    		if(bmi_weight > 300)
+    			bmi_weight = 15;
+    	}
+    	else
+    	{
+    		bmi_weight++;
+    		bmi_weight %= 256;
+    	}
+    	eeprom_write_word((uint16_t *)EE_BMI_WEIGHT, bmi_weight);
+    	display_bmi_weight(bmi_unit, bmi_weight);
+    }
+    if (mode == SET_BMI_HEIGHT)
+    {
+    	if(bmi_unit == BMI_Imperial)
+    	{
+    		bmi_height++;
+    		if(bmi_height > 120)
+    			bmi_height = 36;
+    	}
+    	else if (bmi_unit == BMI_Metric)
+    	{
+    		bmi_height++;
+    		if(bmi_height > 305)
+    			bmi_height = 92;
+    	}
+    	eeprom_write_word((uint16_t *)EE_BMI_HEIGHT, bmi_height);
+    	display_bmi_height(bmi_unit, bmi_height);
+    }
+    if (mode == SET_SMOKER)
+    {
+    	smoker = !smoker;
+    	if(smoker)
+    		display_str("smoker  ");
+    	else
+    		display_str("non smkr");
+    	eeprom_write_byte((uint8_t*)EE_SMOKER, smoker);
+    }
+
+      if (pressed & 0x4)
+	delayms(60);
+    }
+  }
+  
+  date_d = day_t; date_m = month_t; date_y = year_t; return;
 }
 
 
@@ -1422,6 +1747,27 @@ void display_date(uint8_t style) {
     display[7] = pgm_read_byte(numbertable_p + (date_y / 10));
     display[8] = pgm_read_byte(numbertable_p + (date_y % 10));
 
+  } else if (style == YEAR) {
+  	  display[0] = 0;
+
+    if (region == REGION_US) {
+      // mm-dd-yy
+      display[1] = pgm_read_byte(numbertable_p + (date_m / 10));
+      display[2] = pgm_read_byte(numbertable_p + (date_m % 10));
+      display[3] = pgm_read_byte(numbertable_p + (date_d / 10));
+      display[4] = pgm_read_byte(numbertable_p + (date_d % 10));
+    } else {
+      // dd-mm-yy
+      display[1] = pgm_read_byte(numbertable_p + (date_d / 10));
+      display[2] = pgm_read_byte(numbertable_p + (date_d % 10));
+      display[3] = pgm_read_byte(numbertable_p + (date_m / 10));
+      display[4] = pgm_read_byte(numbertable_p + (date_m % 10));
+    }
+    // the yy part is the same
+    display[5] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))/10));
+    display[6] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))%10));
+    display[7] = pgm_read_byte(numbertable_p + ((date_y%100) / 10));
+    display[8] = pgm_read_byte(numbertable_p + ((date_y%100) % 10));
   } else if (style == DAY) {
     // This is more "Sunday June 21" style
 

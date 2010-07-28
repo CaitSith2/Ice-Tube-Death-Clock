@@ -304,9 +304,9 @@ void load_etd(void)
       result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
       	                   eeprom_read_byte((uint8_t *)EE_SET_DAY),
       	                   eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
-      	                   date_m,date_d,date_y+2000) * 1440 * (dc_mode == DC_mode_sadistic)?4:1;
-	  result -= (time_h * 60) * (dc_mode == DC_mode_sadistic)?4:1;
-	  result -= (time_m) * (dc_mode == DC_mode_sadistic)?4:1;
+      	                   date_m,date_d,date_y+2000) * 1440 * ((dc_mode == DC_mode_sadistic)?4:1);
+	  result -= (time_h * 60) * ((dc_mode == DC_mode_sadistic)?4:1);
+	  result -= (time_m) * ((dc_mode == DC_mode_sadistic)?4:1);
   minutes_left = (int32_t)result;
 }
 

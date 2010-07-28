@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 #define halt(x)  while (1)
 
-#define DEBUG 1
+#define DEBUG 0
 #define DEBUGP(x)  if (DEBUG) {putstring_nl(x);}
 
 
@@ -72,6 +72,9 @@ THE SOFTWARE.
 #define EE_BMI_WEIGHT 23
 #define EE_BMI_HEIGHT 25
 #define EE_SMOKER 27
+#define EE_SET_HOUR 28
+#define EE_SET_MIN 29
+#define EE_SET_SEC 30
 
 void delay(uint16_t delay);
 

@@ -15,4 +15,16 @@
 
 uint32_t date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2, uint8_t day2, uint8_t year2 );
 uint8_t BodyMassIndex ( uint8_t unit, uint16_t height, uint16_t weight );
-uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t month, uint8_t day, uint8_t year, uint8_t Gender, uint8_t Mode, uint8_t BMI, uint8_t Smoker );
+uint32_t ETD ( uint8_t DOB_month, 
+	           uint8_t DOB_day, 
+	           uint8_t DOB_year, 
+	           uint8_t month, 
+	           uint8_t day, 
+	           uint8_t year, 
+	           uint8_t Gender, 
+	           uint8_t Mode, 
+	           uint8_t BMI, 
+	           uint8_t Smoker, 
+	           uint8_t hour,
+	           uint8_t min,
+	           uint8_t sec);

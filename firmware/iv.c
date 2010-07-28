@@ -282,9 +282,11 @@ SIGNAL(SIG_PIN_CHANGE0) {
 }
 
 volatile uint32_t minutes_left=0;
+volatile uint8_t dc_mode;
 
 void load_etd(void)
 {
+  dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
   uint32_t result = ETD(  eeprom_read_byte((uint8_t *)EE_DOB_MONTH),
       	                      eeprom_read_byte((uint8_t *)EE_DOB_DAY),
       	                      eeprom_read_byte((uint8_t *)EE_DOB_YEAR)+1900,
@@ -292,16 +294,19 @@ void load_etd(void)
       	                      eeprom_read_byte((uint8_t *)EE_SET_DAY),
       	                      eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
       	                      eeprom_read_byte((uint8_t *)EE_GENDER),
-      	                      eeprom_read_byte((uint8_t *)EE_DC_MODE),
+      	                      dc_mode,
       	                      BodyMassIndex( eeprom_read_byte((uint8_t *)EE_BMI_UNIT), eeprom_read_word((uint16_t *)EE_BMI_HEIGHT), eeprom_read_word((uint16_t *)EE_BMI_WEIGHT)),
-      	                      eeprom_read_byte((uint8_t *)EE_SMOKER));
+      	                      eeprom_read_byte((uint8_t *)EE_SMOKER),
+                              eeprom_read_byte((uint8_t *)EE_SET_HOUR),
+                              eeprom_read_byte((uint8_t *)EE_SET_MIN),
+                              eeprom_read_byte((uint8_t *)EE_SET_SEC));
       result /= 60;
       result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
       	                   eeprom_read_byte((uint8_t *)EE_SET_DAY),
       	                   eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
-      	                   date_m,date_d,date_y+2000) * 1440;
-	  result -= (time_h * 60);
-	  result -= (time_m);
+      	                   date_m,date_d,date_y+2000) * 1440 * (dc_mode == DC_mode_sadistic)?4:1;
+	  result -= (time_h * 60) * (dc_mode == DC_mode_sadistic)?4:1;
+	  result -= (time_m) * (dc_mode == DC_mode_sadistic)?4:1;
   minutes_left = result;
 }
 
@@ -340,7 +345,7 @@ SIGNAL (TIMER2_OVF_vect) {
     time_s = 0;
     time_m++;
     if(minutes_left>0)
-      minutes_left--;
+      minutes_left-=((dc_mode==DC_mode_sadistic)?4:1);
   }
 
   // an hour...
@@ -407,8 +412,8 @@ SIGNAL (TIMER2_OVF_vect) {
   if (displaymode == SHOW_DEATHCLOCK) {
     uint32_t result;
     result = minutes_left;
-    display_etd(result);
-	result = 59 - time_s;
+    display_etd(result - ((dc_mode == DC_mode_sadistic)?(time_s/15):0));
+	  result = 59 - time_s;
 	if(result & 32)
 		display[3] |= 1;
 	if(result & 16)
@@ -1148,11 +1153,11 @@ void set_deathclock(void) {
   day_t = date_d;
   month_t = date_m;
   year_t = date_y;
-  uint8_t gender, dc_mode, bmi_unit, smoker;
+  uint8_t gender, set_dc_mode, bmi_unit, smoker;
   uint16_t bmi_weight, bmi_height;
   
   gender = eeprom_read_byte((uint8_t *)EE_GENDER);
-  dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
+  set_dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
   date_d = eeprom_read_byte((uint8_t *)EE_DOB_DAY);
   date_m = eeprom_read_byte((uint8_t *)EE_DOB_MONTH);
   date_y = eeprom_read_byte((uint8_t *)EE_DOB_YEAR);
@@ -1218,7 +1223,7 @@ void set_deathclock(void) {
       display_str("male    ");
       } else if (mode == SET_GENDER) {
     mode = SET_DC_MODE;
-    switch(dc_mode)
+    switch(set_dc_mode)
     {
       case DC_mode_normal:
       default:
@@ -1270,10 +1275,14 @@ void set_deathclock(void) {
 	/*displaymode = NONE;
 	display_date(DATE);*/
 	displaymode = NONE;
-	uint32_t result = ETD(date_m, date_d, date_y+1900, month_t, day_t, year_t + 2000, gender, dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker );
+	uint32_t result = ETD(date_m, date_d, date_y+1900, month_t, day_t, year_t + 2000, gender, set_dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker, time_h, time_m, time_s );
+	dc_mode = set_dc_mode;
 	eeprom_write_byte((uint8_t*)EE_SET_DAY,day_t);
     eeprom_write_byte((uint8_t*)EE_SET_MONTH,month_t);
     eeprom_write_byte((uint8_t*)EE_SET_YEAR,year_t);
+    eeprom_write_byte((uint8_t*)EE_SET_MIN,time_m);
+    eeprom_write_byte((uint8_t*)EE_SET_HOUR,time_h);
+    eeprom_write_byte((uint8_t*)EE_SET_SEC,time_s);
 	result /= 60;
 	result -= (time_h * 60);
 	result -= (time_m);
@@ -1317,7 +1326,7 @@ void set_deathclock(void) {
       }
       if (mode == SET_YEAR) {
 	date_y++;
-	date_y %= 100;
+	date_y %= 200;
 	display_date(YEAR);
 	display[5] |= 0x1;
 	display[6] |= 0x1;
@@ -1337,10 +1346,10 @@ void set_deathclock(void) {
     }
     if (mode == SET_DC_MODE)
     {
-    	dc_mode++;
-    	dc_mode %= 4;
+    	set_dc_mode++;
+    	set_dc_mode %= 4;
     	
-    	switch(dc_mode)
+    	switch(set_dc_mode)
     	{
     		case DC_mode_normal:
     		default:
@@ -1356,7 +1365,7 @@ void set_deathclock(void) {
     		  display_str("sadistic");
     		  break;
     	}
-    	eeprom_write_byte((uint8_t *)EE_DC_MODE, dc_mode);
+    	eeprom_write_byte((uint8_t *)EE_DC_MODE, set_dc_mode);
     }
     if (mode == SET_BMI_UNIT)
     {
@@ -1653,7 +1662,7 @@ void setalarmstate(void) {
       delayms(1000);
       // show the current alarm time set
       display_alarm(alarm_h, alarm_m);
-      delayms(1000);
+      delayms(2000);
       // after a second, go back to clock mode
       displaymode = last_displaymode;
     }
@@ -1953,9 +1962,9 @@ void display_alarm(uint8_t h, uint8_t m){
   {
   	  uint32_t result = minutes_left;
   	  if((time_h > h) || ((time_h == h) && (time_m > m)))
-  	  	result -= ((((h * 60) + m) + 1440) - ((time_h * 60) + time_m));
+  	  	result -= (((((h * 60) + m) + 1440) - ((time_h * 60) + time_m)) * ((dc_mode == DC_mode_sadistic)?4:1));
       else
-      	result -= (((h * 60) + m) - ((time_h * 60) + time_m));
+      	result -= ((((h * 60) + m) - ((time_h * 60) + time_m)) * ((dc_mode == DC_mode_sadistic)?4:1));
       display_etd(result);
   	  return;
   }

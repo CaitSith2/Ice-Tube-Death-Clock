@@ -10,7 +10,7 @@
 
 const uint8_t normal_bmi_male[6][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
-  { 40,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,8 },
+{  40,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,8, },
   { 50,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,4,4,4,5,5,5,7 },
   { 60,0,0,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6 },
   { 70,0,0,0,0,1,1,1,1,1,2,2,2,2,3,3,3,4,4,4,4,0,0 },
@@ -158,10 +158,51 @@ uint8_t BodyMassIndex ( uint8_t unit, uint16_t height, uint16_t weight )
   }
 }
 
-uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t month, uint8_t day, uint8_t year, uint8_t Gender, uint8_t Mode, uint8_t BMI, uint8_t Smoker )
+void encipher(unsigned int num_rounds, uint32_t v[2], uint32_t const k[4]) {
+    unsigned int i;
+    uint32_t v0=v[0], v1=v[1], sum=0, delta=0x9E3779B9;
+    for (i=0; i < num_rounds; i++) {
+        v0 += (((v1 << 4) ^ (v1 >> 5)) + v1) ^ (sum + k[sum & 3]);
+        sum += delta;
+        v1 += (((v0 << 4) ^ (v0 >> 5)) + v0) ^ (sum + k[(sum>>11) & 3]);
+    }
+    v[0]=v0; v[1]=v1;
+}
+
+uint32_t ETD ( uint8_t DOB_month, 
+	           uint8_t DOB_day, 
+	           uint8_t DOB_year, 
+	           uint8_t month, 
+	           uint8_t day, 
+	           uint8_t year, 
+	           uint8_t Gender, 
+	           uint8_t Mode, 
+	           uint8_t BMI, 
+	           uint8_t Smoker, 
+	           uint8_t hour,
+	           uint8_t min,
+	           uint8_t sec)
 {
   int y,i,bmi;
-  uint32_t diff, days;
+  uint32_t diff, days, v[2],k[4];
+  uint32_t random;
+  
+  if((Mode == DC_mode_optimistic) || (Mode == DC_mode_pessimistic));
+  k[0] = ((uint32_t)DOB_month << 24) | ((uint32_t)DOB_day << 16) | ((uint32_t)DOB_year << 8) | (uint32_t)month;
+  k[1] = ((uint32_t)day << 24) | ((uint32_t)year << 16) | ((uint32_t)Gender << 8) | (uint32_t)Mode;
+  k[2] = ((uint32_t)BMI << 24) | ((uint32_t)Smoker << 16) | ((uint32_t)hour << 8) | (uint32_t)min;
+  k[3] = (uint32_t)sec;
+  
+  v[0] = 0;
+  v[1] = 0;
+  
+  encipher(32,v,k);
+  k[0] = v[0];
+  k[1] = v[1];
+  encipher(32,v,k);
+  k[2] = v[0];
+  k[3] = v[1];
+  
   diff = date_diff(DOB_month,DOB_day,DOB_year,month,day,year);
   y = (diff * 100) / 36525;
   if (Gender == DC_gender_male)
@@ -267,11 +308,19 @@ uint32_t ETD ( uint8_t DOB_month, uint8_t DOB_day, uint8_t DOB_year, uint8_t mon
   if(Mode == DC_mode_optimistic)
   {
     days += 365250;
+    v[0] ^= days;
+    encipher(32,v,k);
+    random = ((v[0] & 0x7FFF) * 1000) / 0x7FFF;
+    days += (uint32_t)((547900 * random) / 1000);
     //days += random(0,5479)*100;
   }
   if(Mode == DC_mode_pessimistic)
   {
     days -= 547875;
+    v[1] ^= days;
+    encipher(32,v,k);
+    random = ((v[1] & 0x7FFF) * 1000) / 0x7FFF;
+    days -= (uint32_t)((365300 * random) / 1000);
     //days -= random(0,3653)*100;
   }
   

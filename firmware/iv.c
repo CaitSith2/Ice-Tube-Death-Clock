@@ -1913,7 +1913,7 @@ void display_date(uint8_t style) {
                  date_d = 1;
                  date_m++;
             }
-            if(date_m > 13)
+            if(date_m > 12)
             {
               date_m=1;
               date_y++;

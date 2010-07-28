@@ -10,11 +10,11 @@
 
 const uint8_t normal_bmi_male[6][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
-{  40,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,8, },
+  { 40,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,8 },
   { 50,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,4,4,4,5,5,5,7 },
   { 60,0,0,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6 },
   { 70,0,0,0,0,1,1,1,1,1,2,2,2,2,3,3,3,4,4,4,4,0,0 },
-  { 80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5 }
+  { 200,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5 }
 };
 
 const uint8_t normal_bmi_female[7][23] PROGMEM = {
@@ -24,18 +24,18 @@ const uint8_t normal_bmi_female[7][23] PROGMEM = {
   { 50,0,0,0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,10 },
   { 60,0,0,0,0,0,0,0,1,1,1,1,2,2,2,3,3,3,4,4,4,5,7 },
   { 70,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,3,5 },
-  { 80,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2 }
+  { 200,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2 }
 };
 
 const uint8_t sadistic_bmi_male[2][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
-  { 40,0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,2,3,3,4 }
+  { 200,0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,2,3,3,4 }
 };
 
 const uint8_t sadistic_bmi_female[3][23] PROGMEM = {
   { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 },
   { 30,0,0,0,0,0,0,0,1,1,1,1,1,2,2,2,2,3,3,3,3,4,6 },
-  { 40,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,3,3,3,3,5 }
+  { 200,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,3,3,3,3,5 }
 };
 
 const uint16_t normal_smoking_male[11][2] PROGMEM = {
@@ -49,7 +49,7 @@ const uint16_t normal_smoking_male[11][2] PROGMEM = {
   { 60,2046 },
   { 65,1790 },
   { 70,1607 },
-  { 80,1205 }
+  { 200,1205 }
 };
 
 const uint16_t normal_smoking_female[10][2] PROGMEM = {
@@ -62,19 +62,19 @@ const uint16_t normal_smoking_female[10][2] PROGMEM = {
   { 65, 1782 },
   { 70, 1826 },
   { 75, 1381 },
-  { 80, 1096 }
+  { 200, 1096 }
 };
 
 const uint16_t sadistic_smoking_male[3][2] PROGMEM = {
   { 25, 0 },
   { 30, 1278 },
-  { 40, 1242 }
+  { 200, 1242 }
 };
 
 const uint16_t sadistic_smoking_female[3][2] PROGMEM = {
   { 25, 0 },
   { 30, 1424 },
-  { 40, 1388 }
+  { 200, 1388 }
 };
 
 
@@ -93,7 +93,7 @@ uint8_t is_leap_year ( uint16_t year )
 
 uint32_t date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2, uint8_t day2, uint8_t year2 )
 {
-  int diff = 0;
+  uint32_t diff = 0;
   int i;
 
   if((year2 < year1) || ((year2 == year1) && (month2 < month1)))
@@ -138,17 +138,25 @@ uint32_t date_diff ( uint8_t month1, uint8_t day1, uint8_t year1, uint8_t month2
 
 uint8_t BodyMassIndex ( uint8_t unit, uint16_t height, uint16_t weight )
 {
-  uint16_t bmi;
+  uint32_t bmi;
   if ( unit == BMI_Imperial )
   {
     //Imperial, Weight in pounds, Height in inches
-    bmi = (weight * 703) / (height * height);
+    //bmi = (weight * 703) / (height * height);
+    bmi = weight;
+    bmi *= 703;
+    bmi /= height;
+    bmi /= height;
     return (bmi > 255) ? 255 : bmi;
   }
   else if ( unit == BMI_Metric )
   {
     //Metric, Weight in Kilograms, Height in centimeters
-    bmi = (weight * 10000) / (height * height);
+    //bmi = (weight * 10000) / (height * height);
+    bmi = weight;
+    bmi *= 10000;
+    bmi /= height;
+    bmi /= height;
     return (bmi > 255) ? 255 : bmi;
   }
   else
@@ -158,10 +166,11 @@ uint8_t BodyMassIndex ( uint8_t unit, uint16_t height, uint16_t weight )
   }
 }
 
-void encipher(unsigned int num_rounds, uint32_t v[2], uint32_t const k[4]) {
+void encipher(uint32_t v[2]) {
     unsigned int i;
+    const uint32_t k[4] = { 0xA8286CC4, 0x706B91CA, 0x9393639E, 0xFE91E7D9 };
     uint32_t v0=v[0], v1=v[1], sum=0, delta=0x9E3779B9;
-    for (i=0; i < num_rounds; i++) {
+    for (i=0; i < 32; i++) {
         v0 += (((v1 << 4) ^ (v1 >> 5)) + v1) ^ (sum + k[sum & 3]);
         sum += delta;
         v1 += (((v0 << 4) ^ (v0 >> 5)) + v0) ^ (sum + k[(sum>>11) & 3]);
@@ -184,32 +193,23 @@ uint32_t ETD ( uint8_t DOB_month,
 	           uint8_t sec)
 {
   int y,i,bmi;
-  uint32_t diff, days, v[2],k[4];
+  uint32_t diff, v[2];
   uint32_t random;
+  int32_t days;
   
-  if((Mode == DC_mode_optimistic) || (Mode == DC_mode_pessimistic));
-  k[0] = ((uint32_t)DOB_month << 24) | ((uint32_t)DOB_day << 16) | ((uint32_t)DOB_year << 8) | (uint32_t)month;
-  k[1] = ((uint32_t)day << 24) | ((uint32_t)year << 16) | ((uint32_t)Gender << 8) | (uint32_t)Mode;
-  k[2] = ((uint32_t)BMI << 24) | ((uint32_t)Smoker << 16) | ((uint32_t)hour << 8) | (uint32_t)min;
-  k[3] = (uint32_t)sec;
-  
-  v[0] = 0;
-  v[1] = 0;
-  
-  encipher(32,v,k);
-  k[0] = v[0];
-  k[1] = v[1];
-  encipher(32,v,k);
-  k[2] = v[0];
-  k[3] = v[1];
+  if((Mode == DC_mode_optimistic) || (Mode == DC_mode_pessimistic))
+  {
+    v[0] = ((uint32_t)day << 24) | ((uint32_t)year << 16) | 0x1900 | (uint32_t)month;
+    v[1] = ((uint32_t)sec << 24) | 0xB20000 | ((uint32_t)hour << 8) | (uint32_t)min;
+  }
   
   diff = date_diff(DOB_month,DOB_day,DOB_year,month,day,year);
-  y = (diff * 100) / 36525;
+  y = (diff * 10) / 3653;
   if (Gender == DC_gender_male)
-    days = 2694500;  //Divide by 100 at the end.
+    days = 269450;  //Divide by 100 at the end.
   else
-    days = 2895900;
-  days -= diff*100;
+    days = 289590;
+  days -= diff*10;
   bmi = BMI;
   if(bmi > 45)
     bmi = 45;
@@ -220,13 +220,13 @@ uint32_t ETD ( uint8_t DOB_month,
   {
     if (Gender == DC_gender_male)
     {
-      days -= 1351425;  //Divide by 100 at the end.
+      days -= 135143;  //Divide by 100 at the end.
       if ( Smoker == DC_smoker )
         for(i=0;i<3;i++)
         {
           if( y < pgm_read_word(&sadistic_smoking_male[i][0]) )
           {
-            days -= pgm_read_word(&sadistic_smoking_male[i][1])*100;
+            days -= (uint16_t)(pgm_read_word(&sadistic_smoking_male[i][1])*10);
             break;
           }
         }
@@ -234,20 +234,20 @@ uint32_t ETD ( uint8_t DOB_month,
       {
         if ( y < pgm_read_byte(&sadistic_bmi_male[i][0]) )
         {
-          days -= (pgm_read_byte(&sadistic_bmi_male[i][bmi+1]) * 36525);
+          days -= (uint16_t)(pgm_read_byte(&sadistic_bmi_male[i][bmi+1]) * 3653);
           break;
         }
       }
     }
     else
     {
-      days -= 1461000;
-      if ( Smoker == DC_smoker )
+      days -= 146100;
+
         for(i=0;i<3;i++)
         {
           if( y < pgm_read_word(&sadistic_smoking_female[i][0]) )
           {
-            days -= pgm_read_word(&sadistic_smoking_female[i][1])*100;
+            days -= (uint16_t)(pgm_read_word(&sadistic_smoking_female[i][1])*10);
             break;
           }
         }
@@ -255,11 +255,11 @@ uint32_t ETD ( uint8_t DOB_month,
       {
         if ( y < pgm_read_byte(&sadistic_bmi_female[i][0]) )
         {
-          days -= (pgm_read_byte(&sadistic_bmi_female[i][bmi+1]) * 36525);
+          days -= (uint16_t)(pgm_read_byte(&sadistic_bmi_female[i][bmi+1]) * 3653);
           break;
         }
       }
-    }
+}
   }
   else
   {
@@ -270,7 +270,7 @@ uint32_t ETD ( uint8_t DOB_month,
         {
           if( y < pgm_read_word(&normal_smoking_male[i][0]) )
           {
-            days -= pgm_read_word(&normal_smoking_male[i][1])*100;
+            days -= (uint16_t)(pgm_read_word(&normal_smoking_male[i][1])*10);
             break;
           }
         }
@@ -278,7 +278,7 @@ uint32_t ETD ( uint8_t DOB_month,
       {
         if ( y < pgm_read_byte(&normal_bmi_male[i][0]) )
         {
-          days -= (pgm_read_byte(&normal_bmi_male[i][bmi+1]) * 36525);
+          days -= (uint16_t)(pgm_read_byte(&normal_bmi_male[i][bmi+1]) * 3653);
           break;
         }
       }
@@ -290,7 +290,7 @@ uint32_t ETD ( uint8_t DOB_month,
         {
           if( y < pgm_read_word(&normal_smoking_female[i][0]) )
           {
-            days -= pgm_read_word(&normal_smoking_female[i][1])*100;
+            days -= (uint16_t)(pgm_read_word(&normal_smoking_female[i][1])*10);
             break;
           }
         }
@@ -298,7 +298,7 @@ uint32_t ETD ( uint8_t DOB_month,
       {
         if ( y < pgm_read_byte(&normal_bmi_female[i][0]) )
         {
-          days -= (pgm_read_byte(&normal_bmi_female[i][bmi+1]) * 36525);
+          days -= (uint16_t)(pgm_read_byte(&normal_bmi_female[i][bmi+1]) * 3653);
           break;
         }
       }
@@ -307,23 +307,25 @@ uint32_t ETD ( uint8_t DOB_month,
   
   if(Mode == DC_mode_optimistic)
   {
-    days += 365250;
+    days += 36525;
     v[0] ^= days;
-    encipher(32,v,k);
+    encipher(v);
     random = ((v[0] & 0x7FFF) * 1000) / 0x7FFF;
-    days += (uint32_t)((547900 * random) / 1000);
+    days += (uint32_t)((54790 * random) / 1000);
     //days += random(0,5479)*100;
   }
   if(Mode == DC_mode_pessimistic)
   {
-    days -= 547875;
+    days -= 54788;
     v[1] ^= days;
-    encipher(32,v,k);
+    encipher(v);
     random = ((v[1] & 0x7FFF) * 1000) / 0x7FFF;
-    days -= (uint32_t)((365300 * random) / 1000);
+    days -= (uint32_t)((36530 * random) / 1000);
     //days -= random(0,3653)*100;
   }
-  
-  days *= 864;  //Convert days left into seconds left.
+  if (days < 0) return 0;
+  //days *= 864;  //Convert days left into seconds left.
+  //days /= 10;
+  days *= 144;
   return days;
 }

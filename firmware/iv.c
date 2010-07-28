@@ -281,7 +281,7 @@ SIGNAL(SIG_PIN_CHANGE0) {
   PCICR = _BV(PCIE0) | _BV(PCIE2);
 }
 
-volatile uint32_t minutes_left=0;
+volatile int32_t minutes_left=0;
 volatile uint8_t dc_mode;
 
 void load_etd(void)
@@ -300,33 +300,38 @@ void load_etd(void)
                               eeprom_read_byte((uint8_t *)EE_SET_HOUR),
                               eeprom_read_byte((uint8_t *)EE_SET_MIN),
                               eeprom_read_byte((uint8_t *)EE_SET_SEC));
-      result /= 60;
+      //result /= 60;
       result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
       	                   eeprom_read_byte((uint8_t *)EE_SET_DAY),
       	                   eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
       	                   date_m,date_d,date_y+2000) * 1440 * (dc_mode == DC_mode_sadistic)?4:1;
 	  result -= (time_h * 60) * (dc_mode == DC_mode_sadistic)?4:1;
 	  result -= (time_m) * (dc_mode == DC_mode_sadistic)?4:1;
-  minutes_left = result;
+  minutes_left = (int32_t)result;
 }
 
-void display_etd(uint32_t result)
+void display_etd(int32_t result)
 {
-	display[8] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[7] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[6] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[5] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[4] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[3] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[2] = pgm_read_byte(numbertable_p + (result % 10));
-	result /= 10;
-	display[1] = pgm_read_byte(numbertable_p + (result % 10));
+	if (result > 0)
+	{
+	  display[8] = pgm_read_byte(numbertable_p + (result % 10));
+	  result /= 10;
+	  display[7] = pgm_read_byte(numbertable_p + (result % 10));
+	  result /= 10;
+	  display[6] = pgm_read_byte(numbertable_p + (result % 10));
+	  result /= 10;
+	  display[5] = pgm_read_byte(numbertable_p + (result % 10));
+	  result /= 10;
+	  display[4] = pgm_read_byte(numbertable_p + (result % 10));
+	  result /= 10;
+	  display[3] = pgm_read_byte(numbertable_p + (result % 10));
+	  result /= 10;
+	  display[2] = pgm_read_byte(numbertable_p + (result % 10));
+	  result /= 10;
+	  display[1] = pgm_read_byte(numbertable_p + (result % 10));
+    }
+    else
+      display_str("times up");
 }
 
 // This variable keeps track of whether we have not pressed any
@@ -411,22 +416,29 @@ SIGNAL (TIMER2_OVF_vect) {
   }
   if (displaymode == SHOW_DEATHCLOCK) {
     uint32_t result;
-    result = minutes_left;
-    display_etd(result - ((dc_mode == DC_mode_sadistic)?(time_s/15):0));
+    if((minutes_left - ((dc_mode == DC_mode_sadistic)?(time_s/15):0)) > 0)
+    {
+      result = minutes_left;
+      display_etd(result - ((dc_mode == DC_mode_sadistic)?(time_s/15):0));
 	  result = 59 - time_s;
-	if(result & 32)
-		display[3] |= 1;
-	if(result & 16)
-		display[4] |= 1;
-	if(result & 8)
-		display[5] |= 1;
-	if(result & 4)
-		display[6] |= 1;
-	if(result & 2)
-		display[7] |= 1;
-	if(result & 1)
-		display[8] |= 1;
-	if (alarm_on)
+	  if(result & 32)
+	    display[3] |= 1;
+	  if(result & 16)
+	    display[4] |= 1;
+	  if(result & 8)
+	    display[5] |= 1;
+	  if(result & 4)
+	    display[6] |= 1;
+	  if(result & 2)
+	    display[7] |= 1;
+	  if(result & 1)
+	    display[8] |= 1;
+    }
+    else
+    {
+      display_str("times up");  // :)
+    }
+    if (alarm_on)
       display[0] |= 0x2;
     else 
       display[0] &= ~0x2;
@@ -1223,7 +1235,7 @@ void set_deathclock(void) {
       display_str("male    ");
       } else if (mode == SET_GENDER) {
     mode = SET_DC_MODE;
-    switch(set_dc_mode)
+    /*switch(set_dc_mode)
     {
       case DC_mode_normal:
       default:
@@ -1238,7 +1250,15 @@ void set_deathclock(void) {
       case DC_mode_sadistic:
         display_str("sadistic");
         break;
-    }
+    }*/
+    if(set_dc_mode == DC_mode_normal)
+      display_str("normal  ");
+    else if(set_dc_mode == DC_mode_pessimistic)
+      display_str("pessimst");
+    else if(set_dc_mode == DC_mode_optimistic)
+      display_str("optimist");
+    else
+      display_str("sadistic");
       } else if (mode == SET_DC_MODE) {
     mode = SET_BMI_UNIT;
     if(bmi_unit == BMI_Imperial)
@@ -1283,7 +1303,7 @@ void set_deathclock(void) {
     eeprom_write_byte((uint8_t*)EE_SET_MIN,time_m);
     eeprom_write_byte((uint8_t*)EE_SET_HOUR,time_h);
     eeprom_write_byte((uint8_t*)EE_SET_SEC,time_s);
-	result /= 60;
+	//result /= 60;
 	result -= (time_h * 60);
 	result -= (time_m);
 	minutes_left = result;
@@ -1349,7 +1369,7 @@ void set_deathclock(void) {
     	set_dc_mode++;
     	set_dc_mode %= 4;
     	
-    	switch(set_dc_mode)
+    	/*switch(set_dc_mode)
     	{
     		case DC_mode_normal:
     		default:
@@ -1364,20 +1384,38 @@ void set_deathclock(void) {
     		case DC_mode_sadistic:
     		  display_str("sadistic");
     		  break;
-    	}
+    	}*/
+    	if(set_dc_mode == DC_mode_normal)
+    		display_str("normal  ");
+    	else if(set_dc_mode == DC_mode_pessimistic)
+    		display_str("pessimst");
+    	else if(set_dc_mode == DC_mode_optimistic)
+    		display_str("optimist");
+    	else
+    		display_str("sadistic");
     	eeprom_write_byte((uint8_t *)EE_DC_MODE, set_dc_mode);
     }
     if (mode == SET_BMI_UNIT)
     {
     	bmi_unit++;
-    	if(bmi_unit > 2)
-    		bmi_unit=0;
+    	bmi_unit %= 3;
     	if(bmi_unit == BMI_Imperial)
+    	{
     		display_str("imperial");
+    		bmi_weight = 35;
+    		bmi_height = 36;
+    	}
     	else if (bmi_unit == BMI_Metric)
+    	{
     		display_str("metric  ");
+    		bmi_weight = 15;
+    		bmi_height = 92;
+    	}
     	else
+    	{
     		display_str("direct  ");
+    		bmi_weight = 0;
+    	}
     	eeprom_write_byte((uint8_t *)EE_BMI_UNIT, bmi_unit);
     }
     if (mode == SET_BMI_WEIGHT)
@@ -1859,6 +1897,29 @@ void display_date(uint8_t style) {
     display[8] = pgm_read_byte(numbertable_p + ((date_y%100) % 10));
   } else if (style == DAY) {
     // This is more "Sunday June 21" style
+    
+    uint8_t date_d_t=date_d, date_m_t=date_m, date_y_t=date_y;
+    int32_t timeleft=minutes_left;
+    if(last_displaymode == SHOW_DEATHCLOCK)
+    {
+    	while (timeleft >= 1440)
+    	{
+    		timeleft -= 1440;
+    		date_d++;  
+    		if ((date_d > 31) ||
+               ((date_d == 31) && ((date_m == 4)||(date_m == 6)||(date_m == 9)||(date_m == 11))) ||
+               ((date_d == 30) && (date_m == 2)) ||
+               ((date_d == 29) && (date_m == 2) && !leapyear(2000+date_y))) {
+                 date_d = 1;
+                 date_m++;
+            }
+            if(date_m > 13)
+            {
+              date_m=1;
+              date_y++;
+            } 
+    	}
+    }
 
     uint16_t month, year;
     uint8_t dotw;
@@ -1925,6 +1986,20 @@ void display_date(uint8_t style) {
     }
     display[7] = pgm_read_byte(numbertable_p + (date_d / 10));
     display[8] = pgm_read_byte(numbertable_p + (date_d % 10));
+    
+    if(last_displaymode == SHOW_DEATHCLOCK)
+    {
+      delayms(1000);
+    
+      display[1] = display[2] = display[3] = display[4] = 0;
+      display[5] = 0xDA;
+      display[6] = 0xFC;
+      display[7] = pgm_read_byte(numbertable_p + (date_y / 10));
+      display[8] = pgm_read_byte(numbertable_p + (date_y % 10));
+      date_d = date_d_t;
+      date_m = date_m_t;
+      date_y = date_y_t;
+    }
     
   }
 }

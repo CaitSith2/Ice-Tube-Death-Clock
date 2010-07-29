@@ -64,12 +64,12 @@ int uart_putchar(char c)
 }
 
 char uart_getchar(void) {
-	while (!(UCSR0A & _BV(RXC0)));
-	return UDR0;
+  while (!(UCSR0A & _BV(RXC0)));
+  return UDR0;
 }
 
 char uart_getch(void) {
-	return (UCSR0A & _BV(RXC0));
+  return (UCSR0A & _BV(RXC0));
 }
 
 void ROM_putstring(const char *str, uint8_t nl) {

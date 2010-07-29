@@ -29,7 +29,6 @@ THE SOFTWARE.
 #define BRRL_192 26    
 #endif
 
-#define NOP asm("nop");
 #define uart_putc(c) uart_putchar(c)
 
 void delay_ms(unsigned char ms);
@@ -54,3 +53,4 @@ void ROM_putstring(const char *str, uint8_t nl);
 #define putstring(x) ROM_putstring(PSTR(x), 0)
 #define putstring_nl(x) ROM_putstring(PSTR(x), 1)
 #define nop asm volatile ("nop\n\t")
+#define NOP nop

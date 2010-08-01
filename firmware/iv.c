@@ -41,6 +41,8 @@ uint8_t region = REGION_US;
 volatile uint8_t time_s, time_m, time_h;
 // ... and current date
 volatile uint8_t date_m, date_d, date_y;
+// ... and death date
+volatile uint8_t death_m, death_d, death_y;
 
 
 // how loud is the speaker supposed to be?
@@ -284,10 +286,10 @@ SIGNAL(SIG_PIN_CHANGE0) {
 volatile int32_t minutes_left=0;
 volatile uint8_t dc_mode;
 
-void load_etd(void)
+uint32_t load_raw_etd(void)
 {
   dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
-  uint32_t result = ETD(  eeprom_read_byte((uint8_t *)EE_DOB_MONTH),
+  return ETD(  eeprom_read_byte((uint8_t *)EE_DOB_MONTH),
                               eeprom_read_byte((uint8_t *)EE_DOB_DAY),
                               eeprom_read_byte((uint8_t *)EE_DOB_YEAR)+1900,
                               eeprom_read_byte((uint8_t *)EE_SET_MONTH),
@@ -300,14 +302,45 @@ void load_etd(void)
                               eeprom_read_byte((uint8_t *)EE_SET_HOUR),
                               eeprom_read_byte((uint8_t *)EE_SET_MIN),
                               eeprom_read_byte((uint8_t *)EE_SET_SEC));
-      //result /= 60;
+}
+
+void load_etd(void)
+{
+  uint32_t result = load_raw_etd();
       result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
                            eeprom_read_byte((uint8_t *)EE_SET_DAY),
                            eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
-                           date_m,date_d,date_y+2000) * 1440 * ((dc_mode == DC_mode_sadistic)?4:1);
+                           date_m,date_d,date_y+2000) * 1440l * ((dc_mode == DC_mode_sadistic)?4:1);
   result -= (time_h * 60) * ((dc_mode == DC_mode_sadistic)?4:1);
   result -= (time_m) * ((dc_mode == DC_mode_sadistic)?4:1);
   minutes_left = (int32_t)result;
+}
+
+void calc_death_date(void)
+{
+	uint32_t timeleft;
+	death_m = eeprom_read_byte((uint8_t *)EE_SET_MONTH);
+	death_d = eeprom_read_byte((uint8_t *)EE_SET_DAY);
+	death_y = eeprom_read_byte((uint8_t *)EE_SET_YEAR);
+	timeleft = load_raw_etd();
+	
+	while (timeleft >= 1440)
+      {
+        timeleft -= 1440;
+        death_d++;  
+        if ((death_d > 31) ||
+               ((death_d == 31) && ((death_m == 4)||(death_m == 6)||(death_m == 9)||(death_m == 11))) ||
+               ((death_d == 30) && (death_m == 2)) ||
+               ((death_d == 29) && (death_m == 2) && !leapyear(2000+death_y))) {
+                 death_d = 1;
+                 death_m++;
+            }
+            if(death_m > 12)
+            {
+              death_m=1;
+              death_y++;
+            } 
+      }
 }
 
 void display_etd(int32_t result)
@@ -1861,27 +1894,8 @@ void display_date(uint8_t style) {
     // This is more "Sunday June 21" style
     
     uint8_t date_d_t=date_d, date_m_t=date_m, date_y_t=date_y;
-    int32_t timeleft=minutes_left;
-    if(last_displaymode == SHOW_DEATHCLOCK)
-    {
-      while (timeleft >= 1440)
-      {
-        timeleft -= 1440;
-        date_d++;  
-        if ((date_d > 31) ||
-               ((date_d == 31) && ((date_m == 4)||(date_m == 6)||(date_m == 9)||(date_m == 11))) ||
-               ((date_d == 30) && (date_m == 2)) ||
-               ((date_d == 29) && (date_m == 2) && !leapyear(2000+date_y))) {
-                 date_d = 1;
-                 date_m++;
-            }
-            if(date_m > 12)
-            {
-              date_m=1;
-              date_y++;
-            } 
-      }
-    }
+    calc_death_date();
+    if(last_displaymode == SHOW_DEATHCLOCK) { date_d=death_d;date_m=death_m;date_y=death_y; }
 
     uint16_t month, year;
     uint8_t dotw;

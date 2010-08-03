@@ -294,7 +294,7 @@ uint32_t load_raw_etd(void)
                               eeprom_read_byte((uint8_t *)EE_DOB_YEAR)+1900,
                               eeprom_read_byte((uint8_t *)EE_SET_MONTH),
                               eeprom_read_byte((uint8_t *)EE_SET_DAY),
-                              eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
+                              eeprom_read_byte((uint8_t *)EE_SET_YEAR)+1900,
                               eeprom_read_byte((uint8_t *)EE_GENDER),
                               dc_mode,
                               BodyMassIndex( eeprom_read_byte((uint8_t *)EE_BMI_UNIT), eeprom_read_word((uint16_t *)EE_BMI_HEIGHT), eeprom_read_word((uint16_t *)EE_BMI_WEIGHT)),
@@ -302,18 +302,6 @@ uint32_t load_raw_etd(void)
                               eeprom_read_byte((uint8_t *)EE_SET_HOUR),
                               eeprom_read_byte((uint8_t *)EE_SET_MIN),
                               eeprom_read_byte((uint8_t *)EE_SET_SEC));
-}
-
-void load_etd(void)
-{
-  uint32_t result = load_raw_etd();
-      result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
-                           eeprom_read_byte((uint8_t *)EE_SET_DAY),
-                           eeprom_read_byte((uint8_t *)EE_SET_YEAR)+2000,
-                           date_m,date_d,date_y+2000) * 1440l * ((dc_mode == DC_mode_sadistic)?4:1);
-  result -= (time_h * 60) * ((dc_mode == DC_mode_sadistic)?4:1);
-  result -= (time_m) * ((dc_mode == DC_mode_sadistic)?4:1);
-  minutes_left = (int32_t)result;
 }
 
 void calc_death_date(void)
@@ -331,7 +319,7 @@ void calc_death_date(void)
         if ((death_d > 31) ||
                ((death_d == 31) && ((death_m == 4)||(death_m == 6)||(death_m == 9)||(death_m == 11))) ||
                ((death_d == 30) && (death_m == 2)) ||
-               ((death_d == 29) && (death_m == 2) && !leapyear(2000+death_y))) {
+               ((death_d == 29) && (death_m == 2) && !leapyear(1900+death_y))) {
                  death_d = 1;
                  death_m++;
             }
@@ -343,28 +331,34 @@ void calc_death_date(void)
       }
 }
 
+void load_etd(void)
+{
+  uint32_t result = load_raw_etd();
+      result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
+                           eeprom_read_byte((uint8_t *)EE_SET_DAY),
+                           eeprom_read_byte((uint8_t *)EE_SET_YEAR)+1900,
+                           date_m,date_d,date_y+2000) * 1440l * ((dc_mode == DC_mode_sadistic)?4:1);
+  result -= (time_h * 60) * ((dc_mode == DC_mode_sadistic)?4:1);
+  result -= (time_m) * ((dc_mode == DC_mode_sadistic)?4:1);
+  minutes_left = (int32_t)result;
+  calc_death_date();
+  if(death_y < (date_y + 100))	//Bug fix for the rare cases where Minutes left is inadvertantly positive, when it should not be.
+  	  minutes_left = 0;
+  else if((death_y == (date_y + 100)) && (death_m < date_m))
+  	  minutes_left = 0;
+  else if ((death_y == (date_y + 100)) && (death_m == date_m) && (death_d < date_d))
+  	  minutes_left = 0;
+}
+
 void display_etd(int32_t result)
 {
   if (result > 0)
   {
-    display[8] = pgm_read_byte(numbertable_p + (result % 10));
-    result /= 10;
-    display[7] = pgm_read_byte(numbertable_p + (result % 10));
-    result /= 10;
-    display[6] = pgm_read_byte(numbertable_p + (result % 10));
-    result /= 10;
-    display[5] = pgm_read_byte(numbertable_p + (result % 10));
-    result /= 10;
-    display[4] = pgm_read_byte(numbertable_p + (result % 10));
-    result /= 10;
-    display[3] = pgm_read_byte(numbertable_p + (result % 10));
-    result /= 10;
-    display[2] = pgm_read_byte(numbertable_p + (result % 10));
-    result /= 10;
-    display[1] = pgm_read_byte(numbertable_p + (result % 10));
-    }
-    else
-      display_str("times up");
+  	for(uint8_t i=8;i>0;i--,result/=10)
+      display[i] = pgm_read_byte(numbertable_p + (result % 10));
+  }
+  else
+    display_str("times up");
 }
 
 // This variable keeps track of whether we have not pressed any
@@ -1306,19 +1300,30 @@ void set_deathclock(void) {
     //We now calculate Estimated Time of Death, and display it, in minutes left to live format.
     /*displaymode = NONE;
     display_date(DATE);*/
+    
+    uint8_t ee_set_year = year_t + 100;
+	uint8_t max_year_diff[4][2] = {{72,78},{57,63},{82,88},{35,38}};
+	
+	if(((year_t + 100)-date_y)>max_year_diff[set_dc_mode][gender]) ee_set_year = date_y + max_year_diff[set_dc_mode][gender];
+    
     displaymode = NONE;
-    uint32_t result = ETD(date_m, date_d, date_y+1900, month_t, day_t, year_t + 2000, gender, set_dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker, time_h, time_m, time_s );
+    uint32_t result = ETD(date_m, date_d, date_y+1900, month_t, day_t, ee_set_year + 1900, gender, set_dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker, time_h, time_m, time_s );
     dc_mode = set_dc_mode;
+    
+    
+    
     eeprom_write_byte((uint8_t*)EE_SET_DAY,day_t);
     eeprom_write_byte((uint8_t*)EE_SET_MONTH,month_t);
-    eeprom_write_byte((uint8_t*)EE_SET_YEAR,year_t);
+    eeprom_write_byte((uint8_t*)EE_SET_YEAR,ee_set_year);
     eeprom_write_byte((uint8_t*)EE_SET_MIN,time_m);
     eeprom_write_byte((uint8_t*)EE_SET_HOUR,time_h);
     eeprom_write_byte((uint8_t*)EE_SET_SEC,time_s);
     //result /= 60;
-    result -= (time_h * 60);
+    /*result -= (time_h * 60);
     result -= (time_m);
-    minutes_left = result;
+    minutes_left = result;*/
+    load_etd();
+    result = minutes_left;
     display_etd(result);
     delayms(1500);
     displaymode = last_displaymode;
@@ -1801,7 +1806,8 @@ void boost_init(uint8_t brightness) {
   if (brightness < 30)
     brightness = 30;
 
-  if (brightness <= 30) {
+  OCR0A = brightness;
+  /*if (brightness <= 30) {
     OCR0A = 30; 
   } else if (brightness <= 35) {
     OCR0A = 35;
@@ -1829,7 +1835,7 @@ void boost_init(uint8_t brightness) {
     OCR0A = 90;
   } else {
     OCR0A = 30;
-  }
+  }*/
 
   // fast PWM, set OC0A (boost output pin) on match
   TCCR0A = _BV(WGM00) | _BV(WGM01);  
@@ -1843,53 +1849,47 @@ void boost_init(uint8_t brightness) {
 }
 
 /**************************** DISPLAY *****************************/
+	
+void display_md(uint8_t style)
+{
+	display[0] = 0;
+	if(style==0)
+	{
+		// the yy part is the same
+	    display[5] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))/10));
+	    display[6] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))%10));
+	}
+	else
+	{
+		display[6] = display[3] = 0x02;     // put dashes between num
+	}
+
+    if (region == REGION_US) {
+      // mm-dd-yy
+      display[1] = pgm_read_byte(numbertable_p + (date_m / 10));
+      display[2] = pgm_read_byte(numbertable_p + (date_m % 10));
+      display[3+style] = pgm_read_byte(numbertable_p + (date_d / 10));
+      display[4+style] = pgm_read_byte(numbertable_p + (date_d % 10));
+    } else {
+      // dd-mm-yy
+      display[1] = pgm_read_byte(numbertable_p + (date_d / 10));
+      display[2] = pgm_read_byte(numbertable_p + (date_d % 10));
+      display[3+style] = pgm_read_byte(numbertable_p + (date_m / 10));
+      display[4+style] = pgm_read_byte(numbertable_p + (date_m % 10));
+    }
+    
+    display[7] = pgm_read_byte(numbertable_p + ((date_y%100) / 10));
+    display[8] = pgm_read_byte(numbertable_p + ((date_y%100) % 10));
+}
 
 // We can display the current date!
 void display_date(uint8_t style) {
 
   // This type is mm-dd-yy OR dd-mm-yy depending on our pref.
   if (style == DATE) {
-    display[0] = 0;
-    display[6] = display[3] = 0x02;     // put dashes between num
-
-    if (region == REGION_US) {
-      // mm-dd-yy
-      display[1] = pgm_read_byte(numbertable_p + (date_m / 10));
-      display[2] = pgm_read_byte(numbertable_p + (date_m % 10));
-      display[4] = pgm_read_byte(numbertable_p + (date_d / 10));
-      display[5] = pgm_read_byte(numbertable_p + (date_d % 10));
-    } else {
-      // dd-mm-yy
-      display[1] = pgm_read_byte(numbertable_p + (date_d / 10));
-      display[2] = pgm_read_byte(numbertable_p + (date_d % 10));
-      display[4] = pgm_read_byte(numbertable_p + (date_m / 10));
-      display[5] = pgm_read_byte(numbertable_p + (date_m % 10));
-    }
-    // the yy part is the same
-    display[7] = pgm_read_byte(numbertable_p + (date_y / 10));
-    display[8] = pgm_read_byte(numbertable_p + (date_y % 10));
-
+     display_md(1);
   } else if (style == YEAR) {
-      display[0] = 0;
-
-    if (region == REGION_US) {
-      // mm-dd-yy
-      display[1] = pgm_read_byte(numbertable_p + (date_m / 10));
-      display[2] = pgm_read_byte(numbertable_p + (date_m % 10));
-      display[3] = pgm_read_byte(numbertable_p + (date_d / 10));
-      display[4] = pgm_read_byte(numbertable_p + (date_d % 10));
-    } else {
-      // dd-mm-yy
-      display[1] = pgm_read_byte(numbertable_p + (date_d / 10));
-      display[2] = pgm_read_byte(numbertable_p + (date_d % 10));
-      display[3] = pgm_read_byte(numbertable_p + (date_m / 10));
-      display[4] = pgm_read_byte(numbertable_p + (date_m % 10));
-    }
-    // the yy part is the same
-    display[5] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))/10));
-    display[6] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))%10));
-    display[7] = pgm_read_byte(numbertable_p + ((date_y%100) / 10));
-    display[8] = pgm_read_byte(numbertable_p + ((date_y%100) % 10));
+      display_md(0);
   } else if (style == DAY) {
     // This is more "Sunday June 21" style
     
@@ -1903,7 +1903,10 @@ void display_date(uint8_t style) {
     // Calculate day of the week
     
     month = date_m;
-    year = 2000 + date_y;
+    if(last_displaymode == SHOW_DEATHCLOCK)
+    	year = 1900 + date_y;
+    else
+    	year = 2000 + date_y;
     if (date_m < 3)  {
       month += 12;
       year -= 1;
@@ -1968,9 +1971,9 @@ void display_date(uint8_t style) {
       delayms(1000);
     
       display[1] = display[2] = display[3] = display[4] = 0;
-      display[5] = 0xDA;
-      display[6] = 0xFC;
-      display[7] = pgm_read_byte(numbertable_p + (date_y / 10));
+      display[5] = pgm_read_byte(numbertable_p + ((19 + (date_y / 100)) / 10));
+      display[6] = pgm_read_byte(numbertable_p + ((19 + (date_y / 100)) % 10));
+      display[7] = pgm_read_byte(numbertable_p + ((date_y % 100) / 10));
       display[8] = pgm_read_byte(numbertable_p + (date_y % 10));
       date_d = date_d_t;
       date_m = date_m_t;
@@ -1980,8 +1983,31 @@ void display_date(uint8_t style) {
   }
 }
 
+void display_hour (uint8_t h)
+{
+  if (region == REGION_US) {
+    if (h >= 12) {
+      display[0] |= 0x1;  // 'pm' notice
+      display[7] = pgm_read_byte(alphatable_p + 'p' - 'a');
+    } else {
+      display[7] = pgm_read_byte(alphatable_p + 'a' - 'a');
+      display[0] &= ~0x1;  // 'am' notice
+    }
+    display[8] = pgm_read_byte(alphatable_p + 'm' - 'a');
+
+    display[2] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) % 10));
+    display[1] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) / 10));
+  } else {
+      display[2] =  pgm_read_byte(numbertable_p + ( (((h+23)%24)+1) % 10));
+    display[1] =  pgm_read_byte(numbertable_p + ( (((h+23)%24)+1) / 10));
+  }
+}
+
 // This displays a time on the clock
 void display_time(uint8_t h, uint8_t m, uint8_t s) {
+  
+  // check euro (24h) or US (12h) style time
+  display_hour(h);
   
   // seconds and minutes are at the end
   display[8] =  pgm_read_byte(numbertable_p + (s % 10));
@@ -1991,20 +2017,7 @@ void display_time(uint8_t h, uint8_t m, uint8_t s) {
   display[4] =  pgm_read_byte(numbertable_p + (m / 10)); 
   display[3] = 0;
 
-  // check euro (24h) or US (12h) style time
-  if (region == REGION_US) {
-    display[2] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) % 10));
-    display[1] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) / 10));
-
-    // We use the '*' as an am/pm notice
-    if (h >= 12)
-      display[0] |= 0x1;  // 'pm' notice
-    else 
-      display[0] &= ~0x1;  // 'pm' notice
-  } else {
-    display[2] =  pgm_read_byte(numbertable_p + ( (h%24) % 10));
-    display[1] =  pgm_read_byte(numbertable_p + ( (h%24) / 10));
-  }
+  
 }
 
 // Kinda like display_time but just hours and minutes
@@ -2028,22 +2041,7 @@ void display_alarm(uint8_t h, uint8_t m){
   display[3] = 0;
 
   // check euro or US style time
-  if (region == REGION_US) {
-    if (h >= 12) {
-      display[0] |= 0x1;  // 'pm' notice
-      display[7] = pgm_read_byte(alphatable_p + 'p' - 'a');
-    } else {
-      display[7] = pgm_read_byte(alphatable_p + 'a' - 'a');
-      display[0] &= ~0x1;  // 'am' notice
-    }
-    display[8] = pgm_read_byte(alphatable_p + 'm' - 'a');
-
-    display[2] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) % 10));
-    display[1] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) / 10));
-  } else {
-      display[2] =  pgm_read_byte(numbertable_p + ( (((h+23)%24)+1) % 10));
-    display[1] =  pgm_read_byte(numbertable_p + ( (((h+23)%24)+1) / 10));
-  }
+  display_hour(h);
 }
 
 // display words (menus, prompts, etc)

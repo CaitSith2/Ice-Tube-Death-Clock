@@ -331,6 +331,34 @@ void calc_death_date(void)
       }
 }
 
+uint8_t credits(void)
+{
+	uint8_t i=0,state=alarm_on;
+	char creditstr[] = "        death clock firmware mod by caitsith2.          icetube by adafruit industries.          www.adafruit.com            ";
+	
+	if(!state)
+		return 0;	//Easter egg only activates when alarm is turned off.
+	while((last_buttonstate & 7) == 2)
+		if(alarm_on != state)
+		{
+			displaymode = NONE;
+			break;
+		}
+	if(alarm_on == state)
+		return 0;
+	while((last_buttonstate & 2) || (creditstr[i+8]!=0))
+	{
+		just_pressed &= ~2;
+		if(creditstr[i+8]==0) i=0;
+		display_str(&creditstr[i++]);
+		delayms(333);
+		kickthedog();
+		
+	}
+	displaymode = last_displaymode;
+	return 1;	//And if the easter egg was activated, then we shoud NOT show the date.
+}
+
 void load_etd(void)
 {
   uint32_t result = load_raw_etd();
@@ -783,14 +811,16 @@ int main(void) {
       }
     } else if (just_pressed & 0x2) {
       just_pressed = 0;
-      displaymode = NONE;
-      display_date(DAY);
+      if(!credits()) {
+	      displaymode = NONE;
+	      display_date(DAY);
 
-      kickthedog();
-      delayms(1500);
-      kickthedog();
+	      kickthedog();
+	      delayms(1500);
+	      kickthedog();
 
-      displaymode = last_displaymode;
+	      displaymode = last_displaymode;
+	  }
     } else if (just_pressed & 0x4) {  //One of these will be used to switch between displaying time and deathclock count down.
       just_pressed = 0;
       if(last_displaymode == SHOW_TIME)
@@ -1322,12 +1352,13 @@ void set_deathclock(void) {
     /*result -= (time_h * 60);
     result -= (time_m);
     minutes_left = result;*/
+    date_d = day_t; date_m = month_t; date_y = year_t;
     load_etd();
     result = minutes_left;
     display_etd(result);
     delayms(1500);
     displaymode = last_displaymode;
-    date_d = day_t; date_m = month_t; date_y = year_t; return;
+    return;
       }
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
@@ -2046,7 +2077,7 @@ void display_alarm(uint8_t h, uint8_t m){
 
 // display words (menus, prompts, etc)
 void display_str(char *s) {
-  uint8_t i;
+  uint8_t i,j=0;
 
   // don't use the lefthand dot/slash digit
   display[0] = 0;
@@ -2054,14 +2085,17 @@ void display_str(char *s) {
   // up to 8 characters
   for (i=1; i<9; i++) {
     // check for null-termination
-    if (s[i-1] == 0)
+    if (s[i+j-1] == 0)
       return;
 
     // Numbers and leters are looked up in the font table!
-    if ((s[i-1] >= 'a') && (s[i-1] <= 'z')) {
-      display[i] =  pgm_read_byte(alphatable_p + s[i-1] - 'a');
-    } else if ((s[i-1] >= '0') && (s[i-1] <= '9')) {
-      display[i] =  pgm_read_byte(numbertable_p + s[i-1] - '0');
+    if ((s[i+j-1] >= 'a') && (s[i+j-1] <= 'z')) {
+      display[i] =  pgm_read_byte(alphatable_p + s[i+j-1] - 'a');
+    } else if ((s[i+j-1] >= '0') && (s[i+j-1] <= '9')) {
+      display[i] =  pgm_read_byte(numbertable_p + s[i+j-1] - '0');
+    } else if (s[i+j-1] == '.') {
+      display[--i] |= 1;
+      j++;
     } else {
       display[i] = 0;      // spaces and other stuff are ignored :(
     }

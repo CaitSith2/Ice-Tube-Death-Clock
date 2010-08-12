@@ -331,22 +331,15 @@ void calc_death_date(void)
       }
 }
 
-uint8_t credits(void)
+void credits(void)
 {
-	uint8_t i=0,state=alarm_on;
-	char creditstr[] = "        death clock firmware mod by caitsith2.          icetube by adafruit industries.          www.adafruit.com            ";
-	
-	if(!state)
-		return 0;	//Easter egg only activates when alarm is turned off.
-	while((last_buttonstate & 7) == 2)
-		if(alarm_on != state)
-		{
-			displaymode = NONE;
-			break;
-		}
-	if(alarm_on == state)
-		return 0;
-	while((last_buttonstate & 2) || (creditstr[i+8]!=0))
+	uint8_t i=0;
+	char creditstr[] = "          " "deathtube.  debugging.  code optimization.  by caitsith2.  code jedi.  www.caitsith2.com"
+	                   "          " "icetube.  icetube hardware.  by ladyada.  simply the best."
+	                   "          " "adafruit industries. www.adafruit.com"
+	                   "          ";
+	displaymode = NONE;
+	while(creditstr[i+8]!=0)
 	{
 		just_pressed &= ~2;
 		if(creditstr[i+8]==0) i=0;
@@ -356,7 +349,6 @@ uint8_t credits(void)
 		
 	}
 	displaymode = last_displaymode;
-	return 1;	//And if the easter egg was activated, then we shoud NOT show the date.
 }
 
 void load_etd(void)
@@ -795,6 +787,11 @@ int main(void) {
     set_region();
     break;
       case (SET_REGION):
+    displaymode = SET_ABOUT;
+    display_str("about   ");
+    set_about();
+    break;
+      case (SET_ABOUT):
     displaymode = SET_DEATHCLOCK;
     display_str("deathclk");
     set_deathclock();
@@ -811,16 +808,14 @@ int main(void) {
       }
     } else if (just_pressed & 0x2) {
       just_pressed = 0;
-      if(!credits()) {
-	      displaymode = NONE;
-	      display_date(DAY);
+	  displaymode = NONE;
+	  display_date(DAY);
 
-	      kickthedog();
-	      delayms(1500);
-	      kickthedog();
+	  kickthedog();
+	  delayms(1500);
+	  kickthedog();
 
 	      displaymode = last_displaymode;
-	  }
     } else if (just_pressed & 0x4) {  //One of these will be used to switch between displaying time and deathclock count down.
       just_pressed = 0;
       if(last_displaymode == SHOW_TIME)
@@ -834,6 +829,30 @@ int main(void) {
 }
 
 /**************************** SUB-MENUS *****************************/
+	
+void set_about(void)
+{
+  timeoutcounter = INACTIVITYTIMEOUT;
+  while (1) {
+    if (just_pressed & 0x1) { // mode change
+      return;
+    }
+    if (just_pressed || pressed) {
+      timeoutcounter = INACTIVITYTIMEOUT;  
+      // timeout w/no buttons pressed after 3 seconds?
+    } else if (!timeoutcounter) {
+      //timed out!
+      displaymode = last_displaymode;     
+      return;
+    }
+    if (just_pressed & 0x6) {
+      just_pressed = 0;
+      credits();
+      displaymode = last_displaymode;
+      return;
+    }
+  }
+}
 
 void set_alarm(void) 
 {
@@ -1146,35 +1165,7 @@ void set_brightness(void) {
       brightness = 30;
     display[7] = pgm_read_byte(numbertable_p + (brightness / 10)) | 0x1;
     display[8] = pgm_read_byte(numbertable_p + (brightness % 10)) | 0x1;
-    if (brightness <= 30) {
-      OCR0A = 30; 
-    } else if (brightness <= 35) {
-      OCR0A = 35;
-    } else if (brightness <= 40) {
-      OCR0A = 40;
-    } else if (brightness <= 45) {
-      OCR0A = 45;
-    } else if (brightness <= 50) {
-      OCR0A = 50;
-    } else if (brightness <= 55) {
-      OCR0A = 55;
-    } else if (brightness <= 60) {
-      OCR0A = 60;
-    } else if (brightness <= 65) {
-      OCR0A = 65;
-    } else if (brightness <= 70) {
-      OCR0A = 70;
-    } else if (brightness <= 75) {
-      OCR0A = 75;
-    } else if (brightness <= 80) {
-      OCR0A = 80;
-    } else if (brightness <= 85) {
-      OCR0A = 85;
-    } else if (brightness <= 90) {
-      OCR0A = 90;
-    } else {
-      OCR0A = 30;
-    }
+    OCR0A = brightness;
       }
     }
   }

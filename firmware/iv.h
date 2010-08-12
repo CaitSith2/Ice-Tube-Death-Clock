@@ -91,6 +91,7 @@ void display_date(uint8_t style);
 void display_str(char *s);
 void display_alarm(uint8_t h, uint8_t m);
 
+void set_about(void);
 void set_time(void);
 void set_alarm(void);
 void set_date(void);
@@ -126,6 +127,7 @@ void spi_xfer(uint8_t c);
 #define SET_SNOOZE 10
 #define SET_DEATHCLOCK 11
 #define SHOW_DEATHCLOCK 12
+#define SET_ABOUT 13
 
 // sub-mode settings
 #define SHOW_MENU 0

@@ -202,8 +202,7 @@ all: begin gccversion sizebefore $(TARGET).elf $(TARGET).hex $(TARGET).eep \
 
 full: $(TARGET).hex $(TARGET).eep
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -u -U lfuse:w:0xE2:m -u -U hfuse:w:0xc6:m
-	$(AVRDUDE) $(AVRDUDE_FLAGS) -B 1 -U flash:w:$< 
-	$(AVRDUDE) $(AVRDUDE_FLAGS) -B 1 -U eeprom:w:iveep.hex
+	$(AVRDUDE) $(AVRDUDE_FLAGS) -B 1 -U flash:w:$(TARGET).hex -U eeprom:w:$(TARGET).eep
 
 
 burn-fuse: 

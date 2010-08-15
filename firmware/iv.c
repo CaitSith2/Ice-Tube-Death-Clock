@@ -331,19 +331,21 @@ void calc_death_date(void)
       }
 }
 
+const char creditstr[] PROGMEM = "          " "deathtube.  debugging.  code optimization.  by caitsith2.  code jedi.  www.caitsith2.com"
+	                             "          " "icetube.  icetube hardware.  by ladyada.  simply the best."
+	                             "          " "adafruit industries. www.adafruit.com"
+	                             "          ";
+
 void credits(void)
 {
 	uint8_t i=0;
-	char creditstr[] = "          " "deathtube.  debugging.  code optimization.  by caitsith2.  code jedi.  www.caitsith2.com"
-	                   "          " "icetube.  icetube hardware.  by ladyada.  simply the best."
-	                   "          " "adafruit industries. www.adafruit.com"
-	                   "          ";
+	just_pressed &= ~2;
 	displaymode = NONE;
-	while(creditstr[i+8]!=0)
+	while(pgm_read_byte(&creditstr[i+8])!=0)
 	{
-		just_pressed &= ~2;
-		if(creditstr[i+8]==0) i=0;
-		display_str(&creditstr[i++]);
+		while(pgm_read_byte(&creditstr[i]) == '.') i++;
+		//if(pgm_read_byte(&creditstr[i+8])==0) i=0;
+		display_str_rom(&creditstr[i++]);
 		delayms(333);
 		kickthedog();
 		
@@ -375,7 +377,7 @@ void display_etd(int32_t result)
   if (result > 0)
   {
   	for(uint8_t i=8;i>0;i--,result/=10)
-      display[i] = pgm_read_byte(numbertable_p + (result % 10));
+      display[i] = (numbertable[(result % 10)]);
   }
   else
     display_str("times up");
@@ -454,7 +456,7 @@ SIGNAL (TIMER2_OVF_vect) {
     if (timeunknown && (time_s % 2)) {
       display_str("        ");
     } else {
-      display_time(time_h, time_m, time_s);
+      display_time(time_h, time_m, time_s, 0);
     }
     if (alarm_on)
       display[0] |= 0x2;
@@ -467,7 +469,9 @@ SIGNAL (TIMER2_OVF_vect) {
     {
       result = minutes_left;
       display_etd(result - ((dc_mode == DC_mode_sadistic)?(time_s/15):0));
-      result = 59 - time_s;
+      for(uint8_t i=8,result = 59-time_s;result;result>>=1,i--)
+      	  if(result & 1)  display[i] |= 1;
+      /*result = 59 - time_s;
       if(result & 32)
         display[3] |= 1;
       if(result & 16)
@@ -479,7 +483,7 @@ SIGNAL (TIMER2_OVF_vect) {
       if(result & 2)
         display[7] |= 1;
       if(result & 1)
-        display[8] |= 1;
+        display[8] |= 1;*/
     }
     else
     {
@@ -655,7 +659,6 @@ void initbuttons(void) {
     PCMSK0 = _BV(PCINT0);
     PCMSK2 = _BV(PCINT21) | _BV(PCINT20);    
 }
-
 
 int main(void) {
   //  uint8_t i;
@@ -889,14 +892,8 @@ void set_alarm(void)
       if (mode == SHOW_MENU) {
     // ok now its selected
     mode = SET_HOUR;
-    display_alarm(hour, min);
-    display[1] |= 0x1;
-    display[2] |= 0x1;
       } else if (mode == SET_HOUR) {
     mode = SET_MIN;
-    display_alarm(hour, min);
-    display[4] |= 0x1;
-    display[5] |= 0x1;
       } else {
     // done!
     alarm_h = hour;
@@ -906,22 +903,18 @@ void set_alarm(void)
     displaymode = last_displaymode;
     return;
       }
+      display_time(hour,min,60,mode);
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
       just_pressed = 0;
 
       if (mode == SET_HOUR) {
     hour = (hour+1) % 24;
-    display_alarm(hour, min);
-    display[1] |= 0x1;
-    display[2] |= 0x1;
       }
       if (mode == SET_MIN) {
     min = (min+1) % 60;
-    display_alarm(hour, min);
-    display[4] |= 0x1;
-    display[5] |= 0x1;
       }
+      display_time(hour,min,60,mode);
 
       if (pressed & 0x4)
     delayms(75);
@@ -962,19 +955,10 @@ void set_time(void)
 
     // ok now its selected
     mode = SET_HOUR;
-    display_time(hour, min, sec);
-    display[1] |= 0x1;
-    display[2] |= 0x1;
       } else if (mode == SET_HOUR) {
     mode = SET_MIN;
-    display_time(hour, min, sec);
-    display[4] |= 0x1;
-    display[5] |= 0x1;
       } else if (mode == SET_MIN) {
     mode = SET_SEC;
-    display_time(hour, min, sec);
-    display[7] |= 0x1;
-    display[8] |= 0x1;
       } else {
     // done!
     time_h = hour;
@@ -983,34 +967,26 @@ void set_time(void)
     displaymode = last_displaymode;
     return;
       }
+      display_time(hour, min, sec, mode);
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
       just_pressed = 0;
       
       if (mode == SET_HOUR) {
     hour = (hour+1) % 24;
-    display_time(hour, min, sec);
-    display[1] |= 0x1;
-    display[2] |= 0x1;
     time_h = hour;
     eeprom_write_byte((uint8_t *)EE_HOUR, time_h);    
       }
       if (mode == SET_MIN) {
     min = (min+1) % 60;
-    display_time(hour, min, sec);
-    display[4] |= 0x1;
-    display[5] |= 0x1;
     eeprom_write_byte((uint8_t *)EE_MIN, time_m);
     time_m = min;
       }
       if ((mode == SET_SEC) ) {
     sec = (sec+1) % 60;
-    display_time(hour, min, sec);
-    display[7] |= 0x1;
-    display[8] |= 0x1;
     time_s = sec;
       }
-      
+      display_time(hour, min, sec, mode);
       if (pressed & 0x4)
     delayms(75);
     }
@@ -1048,24 +1024,15 @@ void set_date(void) {
       DEBUGP("Set day");
       mode = SET_DAY;
     }
-    display_date(DATE);
-    display[1] |= 0x1;
-    display[2] |= 0x1;
       } else if (((mode == SET_MONTH) && (region == REGION_US)) ||
          ((mode == SET_DAY) && (region == REGION_EU))) {
     if (region == REGION_US)
       mode = SET_DAY;
     else
       mode = SET_MONTH;
-    display_date(DATE);
-    display[4] |= 0x1;
-    display[5] |= 0x1;
       } else if (((mode == SET_DAY) && (region == REGION_US)) ||
     ((mode == SET_MONTH) && (region == REGION_EU))) {
     mode = SET_YEAR;
-    display_date(DATE);
-    display[7] |= 0x1;
-    display[8] |= 0x1;
       } else {
     displaymode = NONE;
     display_date(DATE);
@@ -1073,6 +1040,8 @@ void set_date(void) {
     displaymode = last_displaymode;
     return;
       }
+      display_md(1,date_m,date_d,date_y);
+      display_date_set(DATE,mode);
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
       just_pressed = 0;
@@ -1080,39 +1049,21 @@ void set_date(void) {
     date_m++;
     if (date_m >= 13)
       date_m = 1;
-    display_date(DATE);
-    if (region == REGION_US) {
-      display[1] |= 0x1;
-      display[2] |= 0x1;
-    } else {
-      display[4] |= 0x1;
-      display[5] |= 0x1;
-    }
     eeprom_write_byte((uint8_t *)EE_MONTH, date_m);    
       }
       if (mode == SET_DAY) {
     date_d++;
     if (date_d > 31)
       date_d = 1;
-    display_date(DATE);
-
-    if (region == REGION_EU) {
-      display[1] |= 0x1;
-      display[2] |= 0x1;
-    } else {
-      display[4] |= 0x1;
-      display[5] |= 0x1;
-    }
     eeprom_write_byte((uint8_t *)EE_DAY, date_d);    
       }
       if (mode == SET_YEAR) {
     date_y++;
     date_y %= 100;
-    display_date(DATE);
-    display[7] |= 0x1;
-    display[8] |= 0x1;
     eeprom_write_byte((uint8_t *)EE_YEAR, date_y);    
       }
+      display_md(1,date_m,date_d,date_y);
+      display_date_set(DATE,mode);
 
       if (pressed & 0x4)
     delayms(60);
@@ -1120,6 +1071,12 @@ void set_date(void) {
   }
 }
 
+void display_brightness(uint8_t brightness)
+{
+    display_str("brite ");
+    display[7] = (numbertable[(brightness / 10)]) | 0x1;
+    display[8] = (numbertable[(brightness % 10)]) | 0x1;
+}
 
 void set_brightness(void) {
   uint8_t mode = SHOW_MENU;
@@ -1148,9 +1105,7 @@ void set_brightness(void) {
     // start!
     mode = SET_BRITE;
     // display brightness
-    display_str("brite ");
-    display[7] = pgm_read_byte(numbertable_p + (brightness / 10)) | 0x1;
-    display[8] = pgm_read_byte(numbertable_p + (brightness % 10)) | 0x1;
+    display_brightness(brightness);
       } else {
     displaymode = last_displaymode;
     eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
@@ -1163,15 +1118,14 @@ void set_brightness(void) {
     brightness += 5;
     if (brightness > 91)
       brightness = 30;
-    display[7] = pgm_read_byte(numbertable_p + (brightness / 10)) | 0x1;
-    display[8] = pgm_read_byte(numbertable_p + (brightness % 10)) | 0x1;
+    display_brightness(brightness);
     OCR0A = brightness;
       }
     }
   }
 }
 
-//display[1] = pgm_read_byte(numbertable_p + (date_m / 10));
+//display[1] = (numbertable[(date_m / 10)]);
 void display_bmi_weight(uint8_t unit, uint16_t weight)
 {
   display[0] = 0;
@@ -1181,9 +1135,9 @@ void display_bmi_weight(uint8_t unit, uint16_t weight)
     display_str("    kg  ");
   else
     display_str("    bmi ");
-  display[1] = pgm_read_byte(numbertable_p + (weight / 100));
-  display[2] = pgm_read_byte(numbertable_p + ((weight % 100) / 10));
-  display[3] = pgm_read_byte(numbertable_p + (weight % 10));
+  display[1] = (numbertable[(weight / 100)]);
+  display[2] = (numbertable[((weight % 100) / 10)]);
+  display[3] = (numbertable[(weight % 10)]);
 }
 
 void display_bmi_height(uint8_t unit, uint16_t height)
@@ -1192,35 +1146,93 @@ void display_bmi_height(uint8_t unit, uint16_t height)
   if(unit==BMI_Imperial)
   {
     display_str("   ft   ");
-    display[1] = pgm_read_byte(numbertable_p + ((height / 12) / 10));
-    display[2] = pgm_read_byte(numbertable_p + ((height / 12) % 10));
-    display[7] = pgm_read_byte(numbertable_p + ((height % 12) / 10));
-    display[8] = pgm_read_byte(numbertable_p + ((height % 12) % 10));
+    display[1] = (numbertable[((height / 12) / 10)]);
+    display[2] = (numbertable[((height / 12) % 10)]);
+    display[7] = (numbertable[((height % 12) / 10)]);
+    display[8] = (numbertable[((height % 12) % 10)]);
   }
   else
   {
     display_str("    cm  ");
-    display[1] = pgm_read_byte(numbertable_p + (height / 100));
-    display[2] = pgm_read_byte(numbertable_p + ((height % 100) / 10));
-    display[3] = pgm_read_byte(numbertable_p + (height % 10));
+    display[1] = (numbertable[(height / 100)]);
+    display[2] = (numbertable[((height % 100) / 10)]);
+    display[3] = (numbertable[(height % 10)]);
   }
+}
+
+void display_date_set(uint8_t type, uint8_t mode)
+{
+	if(mode > SET_YEAR)
+		return;
+	//display_date(type);
+	if (((region == REGION_US) && (mode == SET_MONTH)) || ((region == REGION_EU) && (mode == SET_DAY))) {
+      display[1] |= 0x1;
+      display[2] |= 0x1;
+    } else if (mode == SET_YEAR) {
+      if(type == YEAR)
+      {
+        display[5] |= 0x1;
+        display[6] |= 0x1;
+      }
+      display[7] |= 0x1;
+      display[8] |= 0x1;
+    } else {
+      display[3 + ((type == DATE)?1:0)] |= 0x1;
+      display[4 + ((type == DATE)?1:0)] |= 0x1;
+    }
+}
+
+uint8_t gender, set_dc_mode, bmi_unit, smoker;
+uint16_t bmi_weight, bmi_height;
+
+void display_set_dc(uint8_t mode)
+{
+	if (mode == SET_GENDER) {
+    if(gender)
+      display_str("female  ");
+    else
+      display_str("male    ");
+      } else if (mode == SET_DC_MODE) {
+    if(set_dc_mode == DC_mode_normal)
+      display_str("normal  ");
+    else if(set_dc_mode == DC_mode_pessimistic)
+      display_str("pessimst");
+    else if(set_dc_mode == DC_mode_optimistic)
+      display_str("optimist");
+    else
+      display_str("sadistic");
+      } else if (mode == SET_BMI_UNIT) {
+    if(bmi_unit == BMI_Imperial)
+      display_str("imperial");
+    else if (bmi_unit == BMI_Metric)
+      display_str("metric  ");
+    else
+      display_str("direct  ");
+      } else if (mode == SET_BMI_WEIGHT) {
+    display_bmi_weight(bmi_unit,bmi_weight);
+      } else if (mode == SET_BMI_HEIGHT) {
+      display_bmi_height(bmi_unit,bmi_height);
+    }
+    else if (mode == SET_SMOKER)
+    {
+      if(smoker)
+        display_str("smoker  ");
+      else
+        display_str("non smkr");
+    }
 }
 
 void set_deathclock(void) {
   uint8_t mode = SHOW_MENU;
   timeoutcounter = INACTIVITYTIMEOUT;;  
-  uint8_t day_t, month_t, year_t;
-  day_t = date_d;
-  month_t = date_m;
-  year_t = date_y;
-  uint8_t gender, set_dc_mode, bmi_unit, smoker;
-  uint16_t bmi_weight, bmi_height;
+  uint8_t day, month, year;
+  
   
   gender = eeprom_read_byte((uint8_t *)EE_GENDER);
   set_dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
-  date_d = eeprom_read_byte((uint8_t *)EE_DOB_DAY);
-  date_m = eeprom_read_byte((uint8_t *)EE_DOB_MONTH);
-  date_y = eeprom_read_byte((uint8_t *)EE_DOB_YEAR);
+  day = eeprom_read_byte((uint8_t *)EE_DOB_DAY);
+  month = eeprom_read_byte((uint8_t *)EE_DOB_MONTH);
+  year = eeprom_read_byte((uint8_t *)EE_DOB_YEAR);
   bmi_unit = eeprom_read_byte((uint8_t *)EE_BMI_UNIT);
   smoker = eeprom_read_byte((uint8_t *)EE_SMOKER);
   bmi_weight = eeprom_read_word((uint16_t *)EE_BMI_WEIGHT);
@@ -1233,10 +1245,10 @@ void set_deathclock(void) {
     } else if (!timeoutcounter) {
       //timed out!
       displaymode = last_displaymode;
-      date_d = day_t; date_m = month_t; date_y = year_t; return;
+      return;
     }
     if (just_pressed & 0x1) { // mode change
-      date_d = day_t; date_m = month_t; date_y = year_t; return;
+      return;
     }
     if (just_pressed & 0x2) {
 
@@ -1250,91 +1262,42 @@ void set_deathclock(void) {
       DEBUGP("Set day");
       mode = SET_DAY;
     }
-    display_date(YEAR);
-    display[1] |= 0x1;
-    display[2] |= 0x1;
       } else if (((mode == SET_MONTH) && (region == REGION_US)) ||
          ((mode == SET_DAY) && (region == REGION_EU))) {
     if (region == REGION_US)
       mode = SET_DAY;
     else
       mode = SET_MONTH;
-    display_date(YEAR);
-    display[3] |= 0x1;
-    display[4] |= 0x1;
       } else if (((mode == SET_DAY) && (region == REGION_US)) ||
     ((mode == SET_MONTH) && (region == REGION_EU))) {
     mode = SET_YEAR;
-    display_date(YEAR);
-    display[5] |= 0x1;
-    display[6] |= 0x1;
-    display[7] |= 0x1;
-    display[8] |= 0x1;
-      } else if (mode == SET_YEAR) {
-    mode = SET_GENDER;
-    if(gender)
-      display_str("female  ");
-    else
-      display_str("male    ");
-      } else if (mode == SET_GENDER) {
-    mode = SET_DC_MODE;
-    if(set_dc_mode == DC_mode_normal)
-      display_str("normal  ");
-    else if(set_dc_mode == DC_mode_pessimistic)
-      display_str("pessimst");
-    else if(set_dc_mode == DC_mode_optimistic)
-      display_str("optimist");
-    else
-      display_str("sadistic");
-      } else if (mode == SET_DC_MODE) {
-    mode = SET_BMI_UNIT;
-    if(bmi_unit == BMI_Imperial)
-      display_str("imperial");
-    else if (bmi_unit == BMI_Metric)
-      display_str("metric  ");
-    else
-      display_str("direct  ");
-      } else if (mode == SET_BMI_UNIT) {
-    mode = SET_BMI_WEIGHT;
-    display_bmi_weight(bmi_unit,bmi_weight);
+      } else if ((mode >= SET_YEAR) && (mode < SET_BMI_WEIGHT)) {
+    mode++;
       } else if (mode == SET_BMI_WEIGHT) {
     if(bmi_unit != BMI_Direct)
-    {
       mode = SET_BMI_HEIGHT;
-      display_bmi_height(bmi_unit,bmi_height);
-    }
     else
-    {
       mode = SET_SMOKER;
-      if(smoker)
-        display_str("smoker  ");
-      else
-        display_str("non smkr");
-    }
       } else if (mode == SET_BMI_HEIGHT) {
     mode = SET_SMOKER;
-    if(smoker)
-      display_str("smoker  ");
-    else
-      display_str("non smkr");
       } else {
     //We now calculate Estimated Time of Death, and display it, in minutes left to live format.
     /*displaymode = NONE;
     display_date(DATE);*/
     
-    uint8_t ee_set_year = year_t + 100;
+    uint8_t ee_set_year = date_y + 100;
 	uint8_t max_year_diff[4][2] = {{72,78},{57,63},{82,88},{35,38}};
 	
-	if(((year_t + 100)-date_y)>max_year_diff[set_dc_mode][gender]) ee_set_year = date_y + max_year_diff[set_dc_mode][gender];
+	if(((date_y + 100)-year)>max_year_diff[set_dc_mode][gender]) ee_set_year = year + max_year_diff[set_dc_mode][gender];
     
     displaymode = NONE;
-    uint32_t result = ETD(date_m, date_d, date_y+1900, month_t, day_t, ee_set_year + 1900, gender, set_dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker, time_h, time_m, time_s );
+    uint32_t result = ETD(month, day, year+1900, date_m, date_d, ee_set_year + 1900, gender, set_dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker, time_h, time_m, time_s );
     dc_mode = set_dc_mode;
     
     
     
-    eeprom_write_byte((uint8_t*)EE_SET_DAY,day_t);
-    eeprom_write_byte((uint8_t*)EE_SET_MONTH,month_t);
+    eeprom_write_byte((uint8_t*)EE_SET_DAY,date_d);
+    eeprom_write_byte((uint8_t*)EE_SET_MONTH,date_m);
     eeprom_write_byte((uint8_t*)EE_SET_YEAR,ee_set_year);
     eeprom_write_byte((uint8_t*)EE_SET_MIN,time_m);
     eeprom_write_byte((uint8_t*)EE_SET_HOUR,time_h);
@@ -1343,7 +1306,6 @@ void set_deathclock(void) {
     /*result -= (time_h * 60);
     result -= (time_m);
     minutes_left = result;*/
-    date_d = day_t; date_m = month_t; date_y = year_t;
     load_etd();
     result = minutes_left;
     display_etd(result);
@@ -1351,70 +1313,42 @@ void set_deathclock(void) {
     displaymode = last_displaymode;
     return;
       }
+      if(mode<=SET_YEAR)
+      	display_md(0,month,day,year);
+      display_date_set(YEAR,mode);
+      display_set_dc(mode);
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
       just_pressed = 0;
       if (mode == SET_MONTH) {
-    date_m++;
-    if (date_m >= 13)
-      date_m = 1;
-    display_date(YEAR);
-    if (region == REGION_US) {
-      display[1] |= 0x1;
-      display[2] |= 0x1;
-    } else {
-      display[3] |= 0x1;
-      display[4] |= 0x1;
-    }
-    eeprom_write_byte((uint8_t *)EE_DOB_MONTH, date_m);    
+    month++;
+    if (month >= 13)
+      month = 1;
+    eeprom_write_byte((uint8_t *)EE_DOB_MONTH, month);    
       }
       if (mode == SET_DAY) {
-    date_d++;
-    if (date_d > 31)
-      date_d = 1;
-    display_date(YEAR);
-
-    if (region == REGION_EU) {
-      display[1] |= 0x1;
-      display[2] |= 0x1;
-    } else {
-      display[3] |= 0x1;
-      display[4] |= 0x1;
-    }
-    eeprom_write_byte((uint8_t *)EE_DOB_DAY, date_d);    
+    day++;
+    if (day > 31)
+      day = 1;
+    eeprom_write_byte((uint8_t *)EE_DOB_DAY, day);    
       }
       if (mode == SET_YEAR) {
-    date_y++;
-    date_y %= 200;
-    display_date(YEAR);
-    display[5] |= 0x1;
-    display[6] |= 0x1;
-    display[7] |= 0x1;
-    display[8] |= 0x1;
-    eeprom_write_byte((uint8_t *)EE_DOB_YEAR, date_y);    
+    year++;
+    year %= 200;
+    eeprom_write_byte((uint8_t *)EE_DOB_YEAR, year);    
       }
+      if(mode<=SET_YEAR)
+      	display_md(0,month,day,year);
+      display_date_set(YEAR,mode);
     if (mode == SET_GENDER)
     {
       gender = !gender;
-      
-      if(gender)
-        display_str("female  ");
-      else
-        display_str("male    ");
       eeprom_write_byte((uint8_t *)EE_GENDER, gender);
     }
     if (mode == SET_DC_MODE)
     {
       set_dc_mode++;
       set_dc_mode %= 4;
-      if(set_dc_mode == DC_mode_normal)
-        display_str("normal  ");
-      else if(set_dc_mode == DC_mode_pessimistic)
-        display_str("pessimst");
-      else if(set_dc_mode == DC_mode_optimistic)
-        display_str("optimist");
-      else
-        display_str("sadistic");
       eeprom_write_byte((uint8_t *)EE_DC_MODE, set_dc_mode);
     }
     if (mode == SET_BMI_UNIT)
@@ -1423,19 +1357,16 @@ void set_deathclock(void) {
       bmi_unit %= 3;
       if(bmi_unit == BMI_Imperial)
       {
-        display_str("imperial");
         bmi_weight = 35;
         bmi_height = 36;
       }
       else if (bmi_unit == BMI_Metric)
       {
-        display_str("metric  ");
         bmi_weight = 15;
         bmi_height = 92;
       }
       else
       {
-        display_str("direct  ");
         bmi_weight = 0;
       }
       eeprom_write_byte((uint8_t *)EE_BMI_UNIT, bmi_unit);
@@ -1460,7 +1391,6 @@ void set_deathclock(void) {
         bmi_weight %= 256;
       }
       eeprom_write_word((uint16_t *)EE_BMI_WEIGHT, bmi_weight);
-      display_bmi_weight(bmi_unit, bmi_weight);
     }
     if (mode == SET_BMI_HEIGHT)
     {
@@ -1477,26 +1407,34 @@ void set_deathclock(void) {
           bmi_height = 92;
       }
       eeprom_write_word((uint16_t *)EE_BMI_HEIGHT, bmi_height);
-      display_bmi_height(bmi_unit, bmi_height);
     }
     if (mode == SET_SMOKER)
     {
       smoker = !smoker;
-      if(smoker)
-        display_str("smoker  ");
-      else
-        display_str("non smkr");
       eeprom_write_byte((uint8_t*)EE_SMOKER, smoker);
     }
+    display_set_dc(mode);
 
     if (pressed & 0x4)
       delayms(60);
     }
   }
   
-  date_d = day_t; date_m = month_t; date_y = year_t; return;
+  return;
 }
 
+void display_volume(uint8_t volume)
+{
+	if (volume) {
+      display_str("vol high");
+      display[5] |= 0x1;
+    } else {
+      display_str("vol  low");
+    }
+    display[6] |= 0x1;
+    display[7] |= 0x1;
+    display[8] |= 0x1;
+}
 
 void set_volume(void) {
   uint8_t mode = SHOW_MENU;
@@ -1523,15 +1461,7 @@ void set_volume(void) {
     // start!
     mode = SET_VOL;
     // display volume
-    if (volume) {
-      display_str("vol high");
-      display[5] |= 0x1;
-    } else {
-      display_str("vol  low");
-    }
-    display[6] |= 0x1;
-    display[7] |= 0x1;
-    display[8] |= 0x1;
+    display_volume(volume);
       } else {
     displaymode = last_displaymode;
     return;
@@ -1541,15 +1471,7 @@ void set_volume(void) {
       just_pressed = 0;
       if (mode == SET_VOL) {
     volume = !volume;
-    if (volume) {
-      display_str("vol high");
-      display[5] |= 0x1;
-    } else {
-      display_str("vol  low");
-    }
-    display[6] |= 0x1;
-    display[7] |= 0x1;
-    display[8] |= 0x1;
+    display_volume(volume);
     eeprom_write_byte((uint8_t *)EE_VOLUME, volume);
     speaker_init();
     beep(4000, 1);
@@ -1559,7 +1481,14 @@ void set_volume(void) {
 }
 
 
-
+void display_region(void)
+{
+	if (region == REGION_US) {
+      display_str("usa-12hr");
+    } else {
+      display_str("eur-24hr");
+    }
+}
 
 void set_region(void) {
   uint8_t mode = SHOW_MENU;
@@ -1585,11 +1514,7 @@ void set_region(void) {
     // start!
     mode = SET_REG;
     // display region
-    if (region == REGION_US) {
-      display_str("usa-12hr");
-    } else {
-      display_str("eur-24hr");
-    }
+    display_region();
       } else {
     displaymode = last_displaymode;
     return;
@@ -1599,11 +1524,7 @@ void set_region(void) {
       just_pressed = 0;
       if (mode == SET_REG) {
     region = !region;
-    if (region == REGION_US) {
-      display_str("usa-12hr");
-    } else {
-      display_str("eur-24hr");
-    }
+    display_region();
     eeprom_write_byte((uint8_t *)EE_REGION, region);
       }
     }
@@ -1639,8 +1560,8 @@ void set_snooze(void) {
     mode = SET_SNOOZE;
     // display snooze
     display_str("   minut");
-    display[1] = pgm_read_byte(numbertable_p + (snooze / 10)) | 0x1;
-    display[2] = pgm_read_byte(numbertable_p + (snooze % 10)) | 0x1;
+    display[1] = (numbertable[(snooze / 10)]) | 0x1;
+    display[2] = (numbertable[(snooze % 10)]) | 0x1;
       } else { 
     displaymode = last_displaymode;
     return;
@@ -1652,8 +1573,8 @@ void set_snooze(void) {
         snooze ++;
     if (snooze >= 100)
       snooze = 0;
-    display[1] = pgm_read_byte(numbertable_p + (snooze / 10)) | 0x1;
-    display[2] = pgm_read_byte(numbertable_p + (snooze % 10)) | 0x1;
+    display[1] = (numbertable[(snooze / 10)]) | 0x1;
+    display[2] = (numbertable[(snooze % 10)]) | 0x1;
     eeprom_write_byte((uint8_t *)EE_SNOOZE, snooze);
       }
 
@@ -1872,14 +1793,14 @@ void boost_init(uint8_t brightness) {
 
 /**************************** DISPLAY *****************************/
 	
-void display_md(uint8_t style)
+void display_md(uint8_t style, uint8_t m, uint8_t d, uint8_t y)
 {
 	display[0] = 0;
 	if(style==0)
 	{
 		// the yy part is the same
-	    display[5] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))/10));
-	    display[6] = pgm_read_byte(numbertable_p + ((19 + (date_y/100))%10));
+	    display[5] = (numbertable[((19 + (y/100))/10)]);
+	    display[6] = (numbertable[((19 + (y/100))%10)]);
 	}
 	else
 	{
@@ -1888,30 +1809,51 @@ void display_md(uint8_t style)
 
     if (region == REGION_US) {
       // mm-dd-yy
-      display[1] = pgm_read_byte(numbertable_p + (date_m / 10));
-      display[2] = pgm_read_byte(numbertable_p + (date_m % 10));
-      display[3+style] = pgm_read_byte(numbertable_p + (date_d / 10));
-      display[4+style] = pgm_read_byte(numbertable_p + (date_d % 10));
+      display[1] = (numbertable[(m / 10)]);
+      display[2] = (numbertable[(m % 10)]);
+      display[3+style] = (numbertable[(d / 10)]);
+      display[4+style] = (numbertable[(d % 10)]);
     } else {
       // dd-mm-yy
-      display[1] = pgm_read_byte(numbertable_p + (date_d / 10));
-      display[2] = pgm_read_byte(numbertable_p + (date_d % 10));
-      display[3+style] = pgm_read_byte(numbertable_p + (date_m / 10));
-      display[4+style] = pgm_read_byte(numbertable_p + (date_m % 10));
+      display[1] = (numbertable[(d / 10)]);
+      display[2] = (numbertable[(d % 10)]);
+      display[3+style] = (numbertable[(m / 10)]);
+      display[4+style] = (numbertable[(m % 10)]);
     }
     
-    display[7] = pgm_read_byte(numbertable_p + ((date_y%100) / 10));
-    display[8] = pgm_read_byte(numbertable_p + ((date_y%100) % 10));
+    display[7] = (numbertable[((y%100) / 10)]);
+    display[8] = (numbertable[((y%100) % 10)]);
 }
+
+const char months[] PROGMEM = "jan  \0"
+	                          "feb  \0"
+	                          "march\0"
+	                          "april\0"
+	                          "may  \0"
+	                          "june \0"
+	                          "july \0"
+	                          "augst\0"
+	                          "sept \0"
+	                          "octob\0"
+	                          "novem\0"
+	                          "decem";
+
+const char days[] PROGMEM = "sunday  "
+	                        "monday  "
+	                        "tuesday "
+	                        "wednsday"
+	                        "thursday"
+	                        "friday  "
+	                        "saturday";
 
 // We can display the current date!
 void display_date(uint8_t style) {
 
   // This type is mm-dd-yy OR dd-mm-yy depending on our pref.
   if (style == DATE) {
-     display_md(1);
+     display_md(1,date_m,date_d,date_y);
   } else if (style == YEAR) {
-      display_md(0);
+      display_md(0,date_m,date_d,date_y);
   } else if (style == DAY) {
     // This is more "Sunday June 21" style
     
@@ -1937,66 +1879,26 @@ void display_date(uint8_t style) {
 
     // Display the day first
     display[8] = display[7] = 0;
-    switch (dotw) {
-    case 0:
-      display_str("sunday"); break;
-    case 1:
-      display_str("monday"); break;
-    case 2:
-      display_str("tuesday"); break;
-    case 3:
-      display_str("wednsday"); break;
-    case 4:
-      display_str("thursday"); break;
-    case 5:
-      display_str("friday"); break;
-    case 6:
-      display_str("saturday"); break;
-    }
+    display_str_rom(&days[dotw*8]);
     
     // wait one seconds about
     delayms(1000);
 
     // Then display the month and date
     display[6] = display[5] = display[4] = 0;
-    switch (date_m) {
-    case 1:
-      display_str("jan"); break;
-    case 2:
-      display_str("feb"); break;
-    case 3:
-      display_str("march"); break;
-    case 4:
-      display_str("april"); break;
-    case 5:
-      display_str("may"); break;
-    case 6:
-      display_str("june"); break;
-    case 7:
-      display_str("july"); break;
-    case 8:
-      display_str("augst"); break;
-    case 9:
-      display_str("sept"); break;
-    case 10:
-      display_str("octob"); break;
-    case 11:
-      display_str("novem"); break;
-    case 12:
-      display_str("decem"); break;
-    }
-    display[7] = pgm_read_byte(numbertable_p + (date_d / 10));
-    display[8] = pgm_read_byte(numbertable_p + (date_d % 10));
+    display_str_rom(&months[(date_m-1)*6]);
+    display[7] = (numbertable[(date_d / 10)]);
+    display[8] = (numbertable[(date_d % 10)]);
     
     if(last_displaymode == SHOW_DEATHCLOCK)
     {
       delayms(1000);
     
       display[1] = display[2] = display[3] = display[4] = 0;
-      display[5] = pgm_read_byte(numbertable_p + ((19 + (date_y / 100)) / 10));
-      display[6] = pgm_read_byte(numbertable_p + ((19 + (date_y / 100)) % 10));
-      display[7] = pgm_read_byte(numbertable_p + ((date_y % 100) / 10));
-      display[8] = pgm_read_byte(numbertable_p + (date_y % 10));
+      display[5] = (numbertable[((19 + (date_y / 100)) / 10)]);
+      display[6] = (numbertable[((19 + (date_y / 100)) % 10)]);
+      display[7] = (numbertable[((date_y % 100) / 10)]);
+      display[8] = (numbertable[(date_y % 10)]);
       date_d = date_d_t;
       date_m = date_m_t;
       date_y = date_y_t;
@@ -2010,44 +1912,52 @@ void display_hour (uint8_t h)
   if (region == REGION_US) {
     if (h >= 12) {
       display[0] |= 0x1;  // 'pm' notice
-      display[7] = pgm_read_byte(alphatable_p + 'p' - 'a');
+      display[7] = alphatable['p' - 'a'];
     } else {
-      display[7] = pgm_read_byte(alphatable_p + 'a' - 'a');
+      display[7] = alphatable['a' - 'a'];
       display[0] &= ~0x1;  // 'am' notice
     }
-    display[8] = pgm_read_byte(alphatable_p + 'm' - 'a');
+    display[8] = alphatable['m' - 'a'];
 
-    display[2] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) % 10));
-    display[1] =  pgm_read_byte(numbertable_p + ( (((h+11)%12)+1) / 10));
+    display[2] =  (numbertable[( (((h+11)%12)+1) % 10)]);
+    display[1] =  (numbertable[( (((h+11)%12)+1) / 10)]);
   } else {
-      display[2] =  pgm_read_byte(numbertable_p + ( (((h+23)%24)+1) % 10));
-    display[1] =  pgm_read_byte(numbertable_p + ( (((h+23)%24)+1) / 10));
+      display[2] =  (numbertable[( h % 10)]);
+    display[1] =  (numbertable[( h / 10)]);
   }
 }
 
 // This displays a time on the clock
-void display_time(uint8_t h, uint8_t m, uint8_t s) {
+void display_time(uint8_t h, uint8_t m, uint8_t s, uint8_t mode) {
+  // seconds and minutes are at the end
+  display[8] = display[7] = display[6] = display[3] = 0;
+  display[5] =  (numbertable[(m % 10)]);
+  display[4] =  (numbertable[(m / 10)]); 
   
   // check euro (24h) or US (12h) style time
   display_hour(h);
   
-  // seconds and minutes are at the end
-  display[8] =  pgm_read_byte(numbertable_p + (s % 10));
-  display[7] =  pgm_read_byte(numbertable_p + (s / 10));
-  display[6] = 0;
-  display[5] =  pgm_read_byte(numbertable_p + (m % 10));
-  display[4] =  pgm_read_byte(numbertable_p + (m / 10)); 
-  display[3] = 0;
+  if(s < 60) {
+    display[8] =  (numbertable[(s % 10)]);
+	display[7] =  (numbertable[(s / 10)]);
+  }
+  
+  if(mode)
+  {
+  	  display[((mode-1)*3)+1] |= 1;
+  	  display[((mode-1)*3)+2] |= 1;
+  }
 
   
 }
+
 
 // Kinda like display_time but just hours and minutes
 void display_alarm(uint8_t h, uint8_t m){ 
   if((last_displaymode == SHOW_DEATHCLOCK) && (displaymode != SET_ALARM))
   {
     uint32_t result = minutes_left;
-    if((time_h > h) || ((time_h == h) && (time_m > m)))
+    if((time_h > h) || ((time_h == h) && (time_m > m)) || ((time_h == h) && (time_m == m) && (time_s > 0)))
       result -= (((((h * 60) + m) + 1440) - ((time_h * 60) + time_m)) * ((dc_mode == DC_mode_sadistic)?4:1));
     else
       result -= ((((h * 60) + m) - ((time_h * 60) + time_m)) * ((dc_mode == DC_mode_sadistic)?4:1));
@@ -2055,36 +1965,31 @@ void display_alarm(uint8_t h, uint8_t m){
     return;
   }
   
-  display[8] = 0;
-  display[7] = 0;
-  display[6] = 0;
-  display[5] = pgm_read_byte(numbertable_p + (m % 10));
-  display[4] = pgm_read_byte(numbertable_p + (m / 10)); 
-  display[3] = 0;
-
-  // check euro or US style time
-  display_hour(h);
+  display_time(h,m,60,0);
 }
 
 // display words (menus, prompts, etc)
-void display_str(char *s) {
+//void display_str(char *s) {
+void display_str_rom(const char *str) {
   uint8_t i,j=0;
+  uint8_t s;
 
   // don't use the lefthand dot/slash digit
   display[0] = 0;
 
   // up to 8 characters
   for (i=1; i<9; i++) {
+  	s = pgm_read_byte(&str[i+j-1]);
     // check for null-termination
-    if (s[i+j-1] == 0)
+    if (s == 0)
       return;
 
     // Numbers and leters are looked up in the font table!
-    if ((s[i+j-1] >= 'a') && (s[i+j-1] <= 'z')) {
-      display[i] =  pgm_read_byte(alphatable_p + s[i+j-1] - 'a');
-    } else if ((s[i+j-1] >= '0') && (s[i+j-1] <= '9')) {
-      display[i] =  pgm_read_byte(numbertable_p + s[i+j-1] - '0');
-    } else if (s[i+j-1] == '.') {
+    if ((s >= 'a') && (s <= 'z')) {
+      display[i] =  alphatable[s - 'a'];
+    } else if ((s >= '0') && (s <= '9')) {
+      display[i] =  (numbertable[s - '0']);
+    } else if ((s == '.') && (i > 1)) {
       display[--i] |= 1;
       j++;
     } else {

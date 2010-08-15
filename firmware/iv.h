@@ -86,9 +86,12 @@ void boost_init(uint8_t pwm);
 void vfd_init(void);
 void speaker_init(void);
 
-void display_time(uint8_t h, uint8_t m, uint8_t s);
+void display_date_set(uint8_t type, uint8_t mode);
+void display_md(uint8_t style, uint8_t m, uint8_t d, uint8_t y);
+void display_time(uint8_t h, uint8_t m, uint8_t s, uint8_t mode);
 void display_date(uint8_t style);
-void display_str(char *s);
+#define display_str(x) display_str_rom(PSTR(x))
+void display_str_rom(const char *s);
 void display_alarm(uint8_t h, uint8_t m);
 
 void set_about(void);

@@ -204,6 +204,8 @@ full: $(TARGET).hex $(TARGET).eep
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -u -U lfuse:w:0xE2:m -u -U hfuse:w:0xc6:m
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -B 1 -U flash:w:$(TARGET).hex -U eeprom:w:$(TARGET).eep
 
+eeprom: $(TARGET).hex $(TARGET).eep
+	$(AVRDUDE) $(AVRDUDE_FLAGS) -B 1 -U flash:w:$(TARGET).hex -U eeprom:w:$(TARGET).eep
 
 burn-fuse: 
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -u -U lfuse:w:0xE2:m -u -U hfuse:w:0xc6:m
@@ -261,8 +263,6 @@ extcoff: $(TARGET).elf
 	@echo
 	@echo $(MSG_EXTENDED_COFF) $(TARGET).cof
 	$(COFFCONVERT) -O coff-ext-avr $< $(TARGET).cof
-
-
 
 
 # Program the device.  

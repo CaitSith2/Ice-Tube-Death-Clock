@@ -1,6 +1,8 @@
 /***************************************************************************
- Ice Tube Clock firmware August 13, 2009
- (c) 2009 Limor Fried / Adafruit Industries
+ Ice Tube Clock with DeathClock and GPS firmware July 22, 2010
+ (c) 2010 Limor Fried / Adafruit Industries
+ GPS Capability added by Devlin Thyne
+ DeathClock added by Damien Good
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-
 #include <avr/io.h>      
 #include <string.h>
 #include <avr/interrupt.h>   // Interrupts and timers
@@ -29,7 +30,9 @@ THE SOFTWARE.
 #include <avr/pgmspace.h>    // So we can store the 'font table' in ROM
 #include <avr/eeprom.h>      // Date/time/pref backup in permanent EEPROM
 #include <avr/wdt.h>     // Watchdog timer to repair lockups
+#include <stdlib.h>
 
+void (*app_start)(void) = 0x0000;
 #include "iv.h"
 #include "util.h"
 #include "fonttable.h"
@@ -38,12 +41,11 @@ THE SOFTWARE.
 uint8_t region = REGION_US;
 
 // These variables store the current time.
-volatile uint8_t time_s, time_m, time_h;
+volatile int8_t time_s, time_m, time_h;
 // ... and current date
-volatile uint8_t date_m, date_d, date_y;
+volatile int8_t date_m, date_d, date_y;
 // ... and death date
 volatile uint8_t death_m, death_d, death_y;
-
 
 // how loud is the speaker supposed to be?
 volatile uint8_t volume;
@@ -61,6 +63,15 @@ volatile uint8_t sleepmode = 0;
 
 volatile uint8_t timeunknown = 0;        // MEME
 volatile uint8_t restored = 0;
+
+// String buffer for processing GPS data:
+char strBuffer[BUFFERSIZE];
+uint8_t intBufferStatus = 0;
+
+// Variables for the timezone offset if using GPS.
+int8_t intTimeZoneHour = -8;  //Because Pacific is my time zone...
+uint8_t intTimeZoneMin = 0;
+
 
 // Our display buffer, which is updated to show the time/date/etc
 // and is multiplexed onto the tube
@@ -199,16 +210,16 @@ SIGNAL(SIG_PIN_CHANGE2) {
     if (! (last_buttonstate & 0x1)) { // was not pressed before
       delayms(10);                    // debounce
       if (PIND & _BV(BUTTON1)) {      // filter out bounce
-    PCICR = _BV(PCIE0) | _BV(PCIE2);
-    return;
+	PCICR = _BV(PCIE0) | _BV(PCIE2);
+	return;
       }
       tick();                         // make a noise
       // check if we will snag this button press for snoozing
       if (alarming) {
-    // turn on snooze
-    setsnooze();
-    PCICR = _BV(PCIE0) | _BV(PCIE2);
-    return;
+	// turn on snooze
+	setsnooze();
+	PCICR = _BV(PCIE0) | _BV(PCIE2);
+	return;
       }
       last_buttonstate |= 0x1;
       just_pressed |= 0x1;
@@ -223,26 +234,26 @@ SIGNAL(SIG_PIN_CHANGE2) {
     if (! (last_buttonstate & 0x4)) { // was not pressed before
       delayms(10);                    // debounce
       if (PIND & _BV(BUTTON3)) {      // filter out bounces
-    PCICR = _BV(PCIE0) | _BV(PCIE2);
-    return;
+	PCICR = _BV(PCIE0) | _BV(PCIE2);
+	return;
       }
       buttonholdcounter = 2;          // see if we're press-and-holding
       while (buttonholdcounter) {
-    if (PIND & _BV(BUTTON3)) {        // released
-      tick();                         // make a noise
-      last_buttonstate &= ~0x4;
-      // check if we will snag this button press for snoozing
-      if (alarming) {
-        // turn on snooze
-        setsnooze();
-        PCICR = _BV(PCIE0) | _BV(PCIE2);
-        return;
-      }
-      DEBUGP("b3");
-      just_pressed |= 0x4;
-      PCICR = _BV(PCIE0) | _BV(PCIE2);
-      return;
-    }
+	if (PIND & _BV(BUTTON3)) {        // released
+	  tick();                         // make a noise
+	  last_buttonstate &= ~0x4;
+	  // check if we will snag this button press for snoozing
+	  if (alarming) {
+	    // turn on snooze
+	    setsnooze();
+	    PCICR = _BV(PCIE0) | _BV(PCIE2);
+	    return;
+	  }
+	  DEBUGP("b3");
+	  just_pressed |= 0x4;
+	  PCICR = _BV(PCIE0) | _BV(PCIE2);
+	  return;
+	}
       }
       last_buttonstate |= 0x4;
       pressed |= 0x4;                 // held down
@@ -263,15 +274,15 @@ SIGNAL(SIG_PIN_CHANGE0) {
     if (! (last_buttonstate & 0x2)) { // was not pressed before
       delayms(10);                    // debounce
       if (PINB & _BV(BUTTON2)) {      // filter out bounces
-    PCICR = _BV(PCIE0) | _BV(PCIE2);
-    return;
+	PCICR = _BV(PCIE0) | _BV(PCIE2);
+	return;
       }
       tick();                         // make a noise
       // check if we will snag this button press for snoozing
       if (alarming) {
-    setsnooze();   // turn on snooze
-    PCICR = _BV(PCIE0) | _BV(PCIE2);
-    return;
+	setsnooze(); 	// turn on snooze
+	PCICR = _BV(PCIE0) | _BV(PCIE2);
+	return;
       }
       last_buttonstate |= 0x2;
       just_pressed |= 0x2;
@@ -394,59 +405,8 @@ SIGNAL (TIMER2_OVF_vect) {
 
   time_s++;             // one second has gone by
 
-  // a minute!
-  if (time_s >= 60) {
-    time_s = 0;
-    time_m++;
-    if(minutes_left>0)
-      minutes_left-=((dc_mode==DC_mode_sadistic)?4:1);
-  }
+  fix_time();
 
-  // an hour...
-  if (time_m >= 60) {
-    time_m = 0;
-    time_h++; 
-    // lets write the time to the EEPROM
-    eeprom_write_byte((uint8_t *)EE_HOUR, time_h);
-    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
-  }
-
-  // a day....
-  if (time_h >= 24) {
-    time_h = 0;
-    date_d++;
-    eeprom_write_byte((uint8_t *)EE_DAY, date_d);
-  }
-
-  /*
-  if (! sleepmode) {
-    uart_putw_dec(time_h);
-    uart_putchar(':');
-    uart_putw_dec(time_m);
-    uart_putchar(':');
-    uart_putw_dec(time_s);
-    putstring_nl("");
-  }
-  */
-
-  // a full month!
-  // we check the leapyear and date to verify when its time to roll over months
-  if ((date_d > 31) ||
-      ((date_d == 31) && ((date_m == 4)||(date_m == 6)||(date_m == 9)||(date_m == 11))) ||
-      ((date_d == 30) && (date_m == 2)) ||
-      ((date_d == 29) && (date_m == 2) && !leapyear(2000+date_y))) {
-    date_d = 1;
-    date_m++;
-    eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
-  }
-  
-  // HAPPY NEW YEAR!
-  if (date_m >= 13) {
-    date_y++;
-    date_m = 1;
-    eeprom_write_byte((uint8_t *)EE_YEAR, date_y);
-  }
-  
   // If we're in low power mode we should get out now since the display is off
   if (sleepmode)
     return;
@@ -471,19 +431,6 @@ SIGNAL (TIMER2_OVF_vect) {
       display_etd(result - ((dc_mode == DC_mode_sadistic)?(time_s/15):0));
       for(uint8_t i=8,result = 59-time_s;result;result>>=1,i--)
       	  if(result & 1)  display[i] |= 1;
-      /*result = 59 - time_s;
-      if(result & 32)
-        display[3] |= 1;
-      if(result & 16)
-        display[4] |= 1;
-      if(result & 8)
-        display[5] |= 1;
-      if(result & 4)
-        display[6] |= 1;
-      if(result & 2)
-        display[7] |= 1;
-      if(result & 1)
-        display[8] |= 1;*/
     }
     else
     {
@@ -495,11 +442,8 @@ SIGNAL (TIMER2_OVF_vect) {
       display[0] &= ~0x2;
 
   }
-  if (alarm_on && (alarm_h == time_h) && (alarm_m == time_m) && (time_s == 0)) {
-    DEBUGP("alarm on!");
-    alarming = 1;
-    snoozetimer = 0;
-  }
+
+  check_alarm(time_h, time_m, time_s);
 
   if (timeoutcounter)
     timeoutcounter--;
@@ -536,8 +480,8 @@ SIGNAL(SIG_COMPARATOR) {
       BOOST_PORT &= ~_BV(BOOST); // pull boost fet low
       SPCR  &= ~_BV(SPE); // turn off spi
       if (restored) {
-    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
-    eeprom_write_byte((uint8_t *)EE_SEC, time_s);
+	eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+	eeprom_write_byte((uint8_t *)EE_SEC, time_s);
       }
       DEBUGP("z");
       TCCR0B = 0; // no boost
@@ -550,8 +494,8 @@ SIGNAL(SIG_COMPARATOR) {
     //DEBUGP("LOW");
     if (sleepmode) {
       if (restored) {
-    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
-    eeprom_write_byte((uint8_t *)EE_SEC, time_s);
+	eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+	eeprom_write_byte((uint8_t *)EE_SEC, time_s);
       }
       DEBUGP("WAKERESET"); 
       app_start();
@@ -660,6 +604,8 @@ void initbuttons(void) {
     PCMSK2 = _BV(PCINT21) | _BV(PCINT20);    
 }
 
+
+
 int main(void) {
   //  uint8_t i;
   uint8_t mcustate;
@@ -690,9 +636,14 @@ int main(void) {
   restored = 0;
 
   // setup uart
-  uart_init(BRRL_192);
+  uart_init(BRRL_4800);
+
   //DEBUGP("VFD Clock");
   DEBUGP("!");
+  uart_puts("\n\rHello World!\n\r");
+  uart_puts("\n\rBuffer size is:\t");
+  uart_putw_dec(BUFFERSIZE);
+  uart_puts("\n\r");
 
   //DEBUGP("turning on anacomp");
   // set up analog comparator
@@ -710,7 +661,7 @@ int main(void) {
   } else {
     // we aren't in low power mode so init stuff
 
-    // init io's
+    // init IOs
     initbuttons();
     
     VFDSWITCH_PORT &= ~_BV(VFDSWITCH);
@@ -729,6 +680,15 @@ int main(void) {
     DEBUGP("boost init");
     boost_init(eeprom_read_byte((uint8_t *)EE_BRIGHT));
     sei();
+
+    //Load and check the timezone information
+    intTimeZoneHour = eeprom_read_byte((uint8_t *)EE_ZONE_HOUR);
+    if ( ( 12 < intTimeZoneHour ) || ( -12 > intTimeZoneHour ) )
+      intTimeZoneHour = 0;
+
+    intTimeZoneMin = eeprom_read_byte((uint8_t *)EE_ZONE_MIN);
+    if ( ( 60 < intTimeZoneMin ) || ( 0 > intTimeZoneMin ) )
+      intTimeZoneMin = 0;
 
     region = eeprom_read_byte((uint8_t *)EE_REGION);
     
@@ -759,36 +719,44 @@ int main(void) {
       switch(displaymode) {
       case (SHOW_TIME):
       case (SHOW_DEATHCLOCK):
-    displaymode = SET_ALARM;
-    display_str("set alarm");
-    set_alarm();
-    break;
+	displaymode = SET_ALARM;
+	display_str("set alarm");
+	set_alarm();
+	break;
       case (SET_ALARM):
-    displaymode = SET_TIME;
-    display_str("set time");
-    set_time();
-    timeunknown = 0;
-    break;
+	displaymode = SET_TIME;
+	display_str("set time");
+	set_time();
+	timeunknown = 0;
+	break;
       case (SET_TIME):
-    displaymode = SET_DATE;
-    display_str("set date");
-    set_date();
-    break;
+	displaymode = SET_DATE;
+	display_str("set date");
+	set_date();
+	break;
       case (SET_DATE):
-    displaymode = SET_BRIGHTNESS;
-    display_str("set brit");
-    set_brightness();
-    break;
+	//displaymode = SET_BRIGHTNESS;
+	//display_str("set brit");
+	//set_brightness();
+        displaymode = SET_ZONE;
+        display_str("set zone");
+        set_timezone();
+	break;
+      case (SET_ZONE):
+        displaymode = SET_BRIGHTNESS;
+        display_str("set brit");
+        set_brightness();
+        break;
       case (SET_BRIGHTNESS):
-    displaymode = SET_VOLUME;
-    display_str("set vol ");
-    set_volume();
-    break;
+	displaymode = SET_VOLUME;
+	display_str("set vol ");
+	set_volume();
+	break;
       case (SET_VOLUME):
-    displaymode = SET_REGION;
-    display_str("set regn");
-    set_region();
-    break;
+	displaymode = SET_REGION;
+	display_str("set regn");
+	set_region();
+	break;
       case (SET_REGION):
     displaymode = SET_ABOUT;
     display_str("about   ");
@@ -827,7 +795,14 @@ int main(void) {
         last_displaymode = SHOW_TIME;
       displaymode = last_displaymode;
       load_etd();
-    } 
+    }
+
+    //Check to see if GPS data is ready:
+    if ( gpsdataready() ) {
+       getgpstime();
+
+    }
+ 
   }
 }
 
@@ -890,18 +865,18 @@ void set_alarm(void)
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
-    // ok now its selected
-    mode = SET_HOUR;
+	// ok now its selected
+	mode = SET_HOUR;
       } else if (mode == SET_HOUR) {
-    mode = SET_MIN;
+	mode = SET_MIN;
       } else {
-    // done!
-    alarm_h = hour;
-    alarm_m = min;
-    eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);    
-    eeprom_write_byte((uint8_t *)EE_ALARM_MIN, alarm_m);    
+	// done!
+	alarm_h = hour;
+	alarm_m = min;
+	eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);    
+	eeprom_write_byte((uint8_t *)EE_ALARM_MIN, alarm_m);    
     displaymode = last_displaymode;
-    return;
+	return;
       }
       display_time(hour,min,60,mode);
     }
@@ -909,15 +884,15 @@ void set_alarm(void)
       just_pressed = 0;
 
       if (mode == SET_HOUR) {
-    hour = (hour+1) % 24;
+	hour = (hour+1) % 24;
       }
       if (mode == SET_MIN) {
-    min = (min+1) % 60;
+	min = (min+1) % 60;
       }
       display_time(hour,min,60,mode);
 
       if (pressed & 0x4)
-    delayms(75);
+	delayms(75);
     }
   }
 }
@@ -949,23 +924,23 @@ void set_time(void)
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
-    hour = time_h;
-    min = time_m;
-    sec = time_s;
+	hour = time_h;
+	min = time_m;
+	sec = time_s;
 
-    // ok now its selected
-    mode = SET_HOUR;
+	// ok now its selected
+	mode = SET_HOUR;
       } else if (mode == SET_HOUR) {
-    mode = SET_MIN;
+	mode = SET_MIN;
       } else if (mode == SET_MIN) {
-    mode = SET_SEC;
+	mode = SET_SEC;
       } else {
-    // done!
-    time_h = hour;
-    time_m = min;
-    time_s = sec;
+	// done!
+	time_h = hour;
+	time_m = min;
+	time_s = sec;
     displaymode = last_displaymode;
-    return;
+	return;
       }
       display_time(hour, min, sec, mode);
     }
@@ -973,22 +948,22 @@ void set_time(void)
       just_pressed = 0;
       
       if (mode == SET_HOUR) {
-    hour = (hour+1) % 24;
-    time_h = hour;
-    eeprom_write_byte((uint8_t *)EE_HOUR, time_h);    
+	hour = (hour+1) % 24;
+	time_h = hour;
+	eeprom_write_byte((uint8_t *)EE_HOUR, time_h);    
       }
       if (mode == SET_MIN) {
-    min = (min+1) % 60;
-    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
-    time_m = min;
+	min = (min+1) % 60;
+	eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+	time_m = min;
       }
       if ((mode == SET_SEC) ) {
-    sec = (sec+1) % 60;
-    time_s = sec;
+	sec = (sec+1) % 60;
+	time_s = sec;
       }
       display_time(hour, min, sec, mode);
       if (pressed & 0x4)
-    delayms(75);
+	delayms(75);
     }
   }
 }
@@ -1016,29 +991,29 @@ void set_date(void) {
 
       just_pressed = 0;
       if (mode == SHOW_MENU) {
-    // start!
-    if (region == REGION_US) {
-      mode = SET_MONTH;
-    }
-    else {
-      DEBUGP("Set day");
-      mode = SET_DAY;
-    }
+	// start!
+	if (region == REGION_US) {
+	  mode = SET_MONTH;
+	}
+	else {
+	  DEBUGP("Set day");
+	  mode = SET_DAY;
+	}
       } else if (((mode == SET_MONTH) && (region == REGION_US)) ||
-         ((mode == SET_DAY) && (region == REGION_EU))) {
-    if (region == REGION_US)
-      mode = SET_DAY;
-    else
-      mode = SET_MONTH;
+		 ((mode == SET_DAY) && (region == REGION_EU))) {
+	if (region == REGION_US)
+	  mode = SET_DAY;
+	else
+	  mode = SET_MONTH;
       } else if (((mode == SET_DAY) && (region == REGION_US)) ||
-    ((mode == SET_MONTH) && (region == REGION_EU))) {
-    mode = SET_YEAR;
+	((mode == SET_MONTH) && (region == REGION_EU))) {
+	mode = SET_YEAR;
       } else {
-    displaymode = NONE;
-    display_date(DATE);
-    delayms(1500);
+	displaymode = NONE;
+	display_date(DATE);
+	delayms(1500);
     displaymode = last_displaymode;
-    return;
+	return;
       }
       display_md(1,date_m,date_d,date_y);
       display_date_set(DATE,mode);
@@ -1046,36 +1021,102 @@ void set_date(void) {
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
       just_pressed = 0;
       if (mode == SET_MONTH) {
-    date_m++;
-    if (date_m >= 13)
-      date_m = 1;
-    eeprom_write_byte((uint8_t *)EE_MONTH, date_m);    
+	date_m++;
+	if (date_m >= 13)
+	  date_m = 1;
+	eeprom_write_byte((uint8_t *)EE_MONTH, date_m);    
       }
       if (mode == SET_DAY) {
-    date_d++;
-    if (date_d > 31)
-      date_d = 1;
-    eeprom_write_byte((uint8_t *)EE_DAY, date_d);    
+	date_d++;
+	if (date_d > 31)
+	  date_d = 1;
+
+	eeprom_write_byte((uint8_t *)EE_DAY, date_d);    
       }
       if (mode == SET_YEAR) {
-    date_y++;
-    date_y %= 100;
-    eeprom_write_byte((uint8_t *)EE_YEAR, date_y);    
+	date_y++;
+	date_y %= 100;
+	eeprom_write_byte((uint8_t *)EE_YEAR, date_y);    
       }
       display_md(1,date_m,date_d,date_y);
       display_date_set(DATE,mode);
 
       if (pressed & 0x4)
-    delayms(60);
+	delayms(60);
     }
   }
+}
+
+//Function to set the time zone
+void set_timezone(void) {
+  int8_t hour = intTimeZoneHour;
+  uint8_t min = intTimeZoneMin;
+  uint8_t mode = SHOW_MENU;
+  timeoutcounter = INACTIVITYTIMEOUT;
+
+  while (1) {
+    if (just_pressed & 0x1) { // mode change
+      return;
+    }
+    if (just_pressed || pressed) {
+      timeoutcounter = INACTIVITYTIMEOUT;  
+      // timeout w/no buttons pressed after 3 seconds?
+    } else if (!timeoutcounter) {
+      //timed out!
+      displaymode = SHOW_TIME;     
+      return;
+    }
+    if (just_pressed & 0x2) {
+      just_pressed = 0;
+      if (mode == SHOW_MENU) {
+	// ok now its selected
+	mode = SET_HOUR;
+      } else if (mode == SET_HOUR) {
+	mode = SET_MIN;
+      } else {
+	// done!
+	displaymode = SHOW_TIME;
+	return;
+      }
+      display_timezone(hour, min, mode);
+    }
+    if ((just_pressed & 0x4) || (pressed & 0x4)) {
+      just_pressed = 0;
+      
+      if (mode == SET_HOUR) {
+	hour = ( ( hour + 1 + 12 ) % 25 ) - 12;
+        intTimeZoneHour = hour;
+	eeprom_write_byte((uint8_t *)EE_ZONE_HOUR, hour);
+	//Debugging:
+	//uart_puts("\n\rTimezone offset hour:\t");
+	//uart_putw_dec(hour);
+      }
+      if (mode == SET_MIN) {
+	min = ( min + 1 ) % 60;
+        intTimeZoneMin = min;
+	eeprom_write_byte((uint8_t *)EE_ZONE_MIN, min);
+      }
+      display_timezone(hour, min, mode);
+      if (pressed & 0x4)
+	delayms(75);
+    }
+  }
+}
+
+
+void print_number(uint8_t number, uint8_t offset)
+{
+	display[offset] = numbertable[(number/10)];
+	display[offset+1] = numbertable[(number%10)];
+	
 }
 
 void display_brightness(uint8_t brightness)
 {
     display_str("brite ");
-    display[7] = (numbertable[(brightness / 10)]) | 0x1;
-    display[8] = (numbertable[(brightness % 10)]) | 0x1;
+    print_number(brightness,7);
+    display[7] |= 0x1;
+    display[8] |= 0x1;
 }
 
 void set_brightness(void) {
@@ -1102,22 +1143,22 @@ void set_brightness(void) {
 
       just_pressed = 0;
       if (mode == SHOW_MENU) {
-    // start!
-    mode = SET_BRITE;
-    // display brightness
+	// start!
+	mode = SET_BRITE;
+	// display brightness
     display_brightness(brightness);
-      } else {
+      } else {	
     displaymode = last_displaymode;
-    eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
-    return;
+	eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
+	return;
       }
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
       just_pressed = 0;
       if (mode == SET_BRITE) {
-    brightness += 5;
-    if (brightness > 91)
-      brightness = 30;
+	brightness += 5;
+	if (brightness > 91)
+	  brightness = 30;
     display_brightness(brightness);
     OCR0A = brightness;
       }
@@ -1136,8 +1177,9 @@ void display_bmi_weight(uint8_t unit, uint16_t weight)
   else
     display_str("    bmi ");
   display[1] = (numbertable[(weight / 100)]);
-  display[2] = (numbertable[((weight % 100) / 10)]);
-  display[3] = (numbertable[(weight % 10)]);
+  print_number(weight % 100, 2);
+  //display[2] = (numbertable[((weight % 100) / 10)]);
+  //display[3] = (numbertable[(weight % 10)]);
 }
 
 void display_bmi_height(uint8_t unit, uint16_t height)
@@ -1146,17 +1188,20 @@ void display_bmi_height(uint8_t unit, uint16_t height)
   if(unit==BMI_Imperial)
   {
     display_str("   ft   ");
-    display[1] = (numbertable[((height / 12) / 10)]);
-    display[2] = (numbertable[((height / 12) % 10)]);
-    display[7] = (numbertable[((height % 12) / 10)]);
-    display[8] = (numbertable[((height % 12) % 10)]);
+    print_number(height / 12,1);
+    print_number(height % 12,7);
+    //display[1] = (numbertable[((height / 12) / 10)]);
+    //display[2] = (numbertable[((height / 12) % 10)]);
+    //display[7] = (numbertable[((height % 12) / 10)]);
+    //display[8] = (numbertable[((height % 12) % 10)]);
   }
   else
   {
     display_str("    cm  ");
     display[1] = (numbertable[(height / 100)]);
-    display[2] = (numbertable[((height % 100) / 10)]);
-    display[3] = (numbertable[(height % 10)]);
+    print_number(height % 100,2);
+    //display[2] = (numbertable[((height % 100) / 10)]);
+    //display[3] = (numbertable[(height % 10)]);
   }
 }
 
@@ -1458,23 +1503,23 @@ void set_volume(void) {
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
-    // start!
-    mode = SET_VOL;
-    // display volume
+	// start!
+	mode = SET_VOL;
+	// display volume
     display_volume(volume);
-      } else {
+      } else {	
     displaymode = last_displaymode;
-    return;
+	return;
       }
     }
     if (just_pressed & 0x4) {
       just_pressed = 0;
       if (mode == SET_VOL) {
-    volume = !volume;
+	volume = !volume;
     display_volume(volume);
-    eeprom_write_byte((uint8_t *)EE_VOLUME, volume);
-    speaker_init();
-    beep(4000, 1);
+	eeprom_write_byte((uint8_t *)EE_VOLUME, volume);
+	speaker_init();
+	beep(4000, 1);
       }
     }
   }
@@ -1511,21 +1556,21 @@ void set_region(void) {
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
-    // start!
-    mode = SET_REG;
-    // display region
+	// start!
+	mode = SET_REG;
+	// display region
     display_region();
-      } else {
+      } else {	
     displaymode = last_displaymode;
-    return;
+	return;
       }
     }
     if (just_pressed & 0x4) {
       just_pressed = 0;
       if (mode == SET_REG) {
-    region = !region;
+	region = !region;
     display_region();
-    eeprom_write_byte((uint8_t *)EE_REGION, region);
+	eeprom_write_byte((uint8_t *)EE_REGION, region);
       }
     }
   }
@@ -1556,30 +1601,32 @@ void set_snooze(void) {
 
       just_pressed = 0;
       if (mode == SHOW_MENU) {
-    // start!
-    mode = SET_SNOOZE;
-    // display snooze
-    display_str("   minut");
-    display[1] = (numbertable[(snooze / 10)]) | 0x1;
-    display[2] = (numbertable[(snooze % 10)]) | 0x1;
+	// start!
+	mode = SET_SNOOZE;
+	// display snooze
+	display_str("   minut");
+	print_number(snooze,1);
+    display[1] |= 0x1;
+    display[2] |= 0x1;
       } else { 
     displaymode = last_displaymode;
-    return;
+	return;
       }
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
       just_pressed = 0;
       if (mode == SET_SNOOZE) {
         snooze ++;
-    if (snooze >= 100)
-      snooze = 0;
-    display[1] = (numbertable[(snooze / 10)]) | 0x1;
-    display[2] = (numbertable[(snooze % 10)]) | 0x1;
-    eeprom_write_byte((uint8_t *)EE_SNOOZE, snooze);
+	if (snooze >= 100)
+	  snooze = 0;
+    print_number(snooze,1);
+    display[1] |= 0x1;
+    display[2] |= 0x1;
+	eeprom_write_byte((uint8_t *)EE_SNOOZE, snooze);
       }
 
       if (pressed & 0x4)
-    delayms(75);
+	delayms(75);
 
     }
   }
@@ -1653,12 +1700,12 @@ void setalarmstate(void) {
       alarm_on = 0;
       snoozetimer = 0;
       if (alarming) {
-    // if the alarm is going off, we should turn it off
-    // and quiet the speaker
-    DEBUGP("alarm off");
-    alarming = 0;
-    TCCR1B &= ~_BV(CS11); // turn it off!
-    PORTB |= _BV(SPK1) | _BV(SPK2);
+	// if the alarm is going off, we should turn it off
+	// and quiet the speaker
+	DEBUGP("alarm off");
+	alarming = 0;
+	TCCR1B &= ~_BV(CS11); // turn it off!
+	PORTB |= _BV(SPK1) | _BV(SPK2);
       } 
     }
   }
@@ -1799,8 +1846,10 @@ void display_md(uint8_t style, uint8_t m, uint8_t d, uint8_t y)
 	if(style==0)
 	{
 		// the yy part is the same
-	    display[5] = (numbertable[((19 + (y/100))/10)]);
-	    display[6] = (numbertable[((19 + (y/100))%10)]);
+		
+		print_number((19+(y/100)),5);
+	    //display[5] = (numbertable[((19 + (y/100))/10)]);
+	    //display[6] = (numbertable[((19 + (y/100))%10)]);
 	}
 	else
 	{
@@ -1809,20 +1858,24 @@ void display_md(uint8_t style, uint8_t m, uint8_t d, uint8_t y)
 
     if (region == REGION_US) {
       // mm-dd-yy
-      display[1] = (numbertable[(m / 10)]);
-      display[2] = (numbertable[(m % 10)]);
-      display[3+style] = (numbertable[(d / 10)]);
-      display[4+style] = (numbertable[(d % 10)]);
+      print_number(m,1);
+      print_number(d,3+style);
+      //display[1] = (numbertable[(m / 10)]);
+      //display[2] = (numbertable[(m % 10)]);
+      //display[3+style] = (numbertable[(d / 10)]);
+      //display[4+style] = (numbertable[(d % 10)]);
     } else {
       // dd-mm-yy
-      display[1] = (numbertable[(d / 10)]);
-      display[2] = (numbertable[(d % 10)]);
-      display[3+style] = (numbertable[(m / 10)]);
-      display[4+style] = (numbertable[(m % 10)]);
+      print_number(d,1);
+      print_number(m,3+style);
+      //display[1] = (numbertable[(d / 10)]);
+      //display[2] = (numbertable[(d % 10)]);
+      //display[3+style] = (numbertable[(m / 10)]);
+      //display[4+style] = (numbertable[(m % 10)]);
     }
-    
-    display[7] = (numbertable[((y%100) / 10)]);
-    display[8] = (numbertable[((y%100) % 10)]);
+    print_number(y%100,7);
+    //display[7] = (numbertable[((y%100) / 10)]);
+    //display[8] = (numbertable[((y%100) % 10)]);
 }
 
 const char months[] PROGMEM = "jan  \0"
@@ -1887,18 +1940,21 @@ void display_date(uint8_t style) {
     // Then display the month and date
     display[6] = display[5] = display[4] = 0;
     display_str_rom(&months[(date_m-1)*6]);
-    display[7] = (numbertable[(date_d / 10)]);
-    display[8] = (numbertable[(date_d % 10)]);
+    print_number(date_d,7);
+    //display[7] = (numbertable[(date_d / 10)]);
+    //display[8] = (numbertable[(date_d % 10)]);
     
     if(last_displaymode == SHOW_DEATHCLOCK)
     {
       delayms(1000);
     
       display[1] = display[2] = display[3] = display[4] = 0;
-      display[5] = (numbertable[((19 + (date_y / 100)) / 10)]);
-      display[6] = (numbertable[((19 + (date_y / 100)) % 10)]);
-      display[7] = (numbertable[((date_y % 100) / 10)]);
-      display[8] = (numbertable[(date_y % 10)]);
+      print_number(19+(date_y/100),5);
+      print_number(date_y%100,7);
+      //display[5] = (numbertable[((19 + (date_y / 100)) / 10)]);
+      //display[6] = (numbertable[((19 + (date_y / 100)) % 10)]);
+      //display[7] = (numbertable[((date_y % 100) / 10)]);
+      //display[8] = (numbertable[(date_y % 10)]);
       date_d = date_d_t;
       date_m = date_m_t;
       date_y = date_y_t;
@@ -1919,27 +1975,32 @@ void display_hour (uint8_t h)
     }
     display[8] = alphatable['m' - 'a'];
 
-    display[2] =  (numbertable[( (((h+11)%12)+1) % 10)]);
-    display[1] =  (numbertable[( (((h+11)%12)+1) / 10)]);
+	print_number(((h+11)%12)+1,1);
+    //display[2] =  (numbertable[( (((h+11)%12)+1) % 10)]);
+    //display[1] =  (numbertable[( (((h+11)%12)+1) / 10)]);
   } else {
-      display[2] =  (numbertable[( h % 10)]);
-    display[1] =  (numbertable[( h / 10)]);
+  	print_number(h,1);
+    //display[2] =  (numbertable[( h % 10)]);
+    //display[1] =  (numbertable[( h / 10)]);
   }
 }
 
 // This displays a time on the clock
 void display_time(uint8_t h, uint8_t m, uint8_t s, uint8_t mode) {
+  
   // seconds and minutes are at the end
   display[8] = display[7] = display[6] = display[3] = 0;
-  display[5] =  (numbertable[(m % 10)]);
-  display[4] =  (numbertable[(m / 10)]); 
-  
+  print_number(m,4);
+  //display[5] =  (numbertable[(m % 10)]);
+  //display[4] =  (numbertable[(m / 10)]); 
+
   // check euro (24h) or US (12h) style time
   display_hour(h);
   
   if(s < 60) {
-    display[8] =  (numbertable[(s % 10)]);
-	display[7] =  (numbertable[(s / 10)]);
+  	print_number(s,7);
+    //display[8] =  (numbertable[(s % 10)]);
+	//display[7] =  (numbertable[(s / 10)]);
   }
   
   if(mode)
@@ -1947,10 +2008,7 @@ void display_time(uint8_t h, uint8_t m, uint8_t s, uint8_t mode) {
   	  display[((mode-1)*3)+1] |= 1;
   	  display[((mode-1)*3)+2] |= 1;
   }
-
-  
 }
-
 
 // Kinda like display_time but just hours and minutes
 void display_alarm(uint8_t h, uint8_t m){ 
@@ -1966,6 +2024,20 @@ void display_alarm(uint8_t h, uint8_t m){
   }
   
   display_time(h,m,60,0);
+}
+
+// Kinda like display_time but just hours and minutes allows negative hours.
+void display_timezone(int8_t h, uint8_t m, uint8_t mode){ 
+  display_time(abs(h),m,60,mode);
+  display[8] = alphatable['c' - 'a'];
+  display[7] = alphatable['t' - 'a'];
+  display[6] = alphatable['u' - 'a'];
+  // We use the '-' as a negative sign
+  if (h >= 0)
+    display[0] &= ~0x2;  // positive numbers, implicit sign
+  else 
+    display[0] |= 0x2;  // negative numbers, display negative sign
+
 }
 
 // display words (menus, prompts, etc)
@@ -2051,3 +2123,346 @@ void spi_xfer(uint8_t c) {
   while (! (SPSR & _BV(SPIF)));
 }
 
+//GPS serial data handling functions:
+
+//Check to see if there is any serial data.
+uint8_t gpsdataready(void) {
+
+  return (UCSR0A & _BV(RXC0));
+
+}
+
+
+void getgpstime(void) {
+
+  uint8_t intOldHr = 0;
+  uint8_t intOldMin = 0;
+  uint8_t intOldSec = 0;
+
+  char charReceived = UDR0;
+
+  char *strPointer1;
+  char strTime[7];
+  char strDate[7];
+  
+  //If the buffer has not been started because a '$' has not been encountered
+  //but a '$' is just now encountered, then start filling the buffer.
+  if ( ( 0 == intBufferStatus ) && ( '$' == charReceived ) ) {
+    intBufferStatus = 1;
+    strncat(strBuffer, &charReceived, 1);
+    return;
+  }
+
+  //If the buffer has started to fill...
+  if ( 0 != intBufferStatus ) {
+    //If for some reason, the buffer is full, clear it, and start over.
+    if ( ! ( ( strlen(strBuffer) < BUFFERSIZE ) ) ) {
+      memset( strBuffer, 0, BUFFERSIZE );
+      intBufferStatus = 0;
+      return;
+    }
+    //If the buffer has 6 characters in it, it is time to check to see if it is 
+    //the line we are looking for that starts with "$GPRMC"
+    else if ( 6 == strlen(strBuffer) ) {
+      //If the buffer does contain the characters we are looking for,
+      //then update the status, add to the buffer, and then return for more.
+      if ( 0 == strcmp( strBuffer, "$GPRMC" ) ) {
+        //uart_puts("\n\r$GPRMC Found \n\r");
+        intBufferStatus = 2;
+        strncat(strBuffer, &charReceived, 1);
+        return;
+      }
+      //If the buffer does not contain the characters we are looking for,
+      //then clear the buffer and start over..
+      else {
+        //uart_puts("\n\r$GPRMC Not Found:\t\t");
+        //uart_puts(strBuffer);
+        memset( strBuffer, 0, BUFFERSIZE );
+        intBufferStatus = 0;
+        return;
+      }
+    }
+
+    //If the asterix at the start of the checksum at the end of the line is encountered,
+    //then parse the buffer.
+    else if ( '*' == charReceived ) {
+      //If the buffer status indicates we have not already found the
+      //needed start of the string, then start over.
+      if ( 2 != intBufferStatus ) {
+        memset( strBuffer, 0, BUFFERSIZE );
+        intBufferStatus = 0;
+        return;
+      }
+      //If the buffer status indicates we have already found the needed start of the string,
+      //then go on to parse the buffer.
+      else {
+        //Parse the buffer here...
+        //Let's test to see if this works:
+        uart_puts("\n\r");
+        uart_puts(strBuffer);
+
+        //Find the first comma:
+        strPointer1 = strchr( strBuffer, ',');
+
+        //Copy the section of memory in the buffer that contains the time.
+        memcpy( strTime, strPointer1 + 1, 6 );
+        //add a null character to the end of the time string.
+        strTime[6] = 0;
+
+
+
+        //Find eight more commas to get the date:
+        for ( int i = 0; i < 8; i++ ) {
+          strPointer1 = strchr( strPointer1 + 1, ',');
+        }
+
+        //Copy the section of memory in the buffer that contains the date.
+        memcpy( strDate, strPointer1 + 1, 6 );
+        //add a null character to the end of the date string.
+        strDate[6] = 0;
+
+        //The GPS unit will not have the proper date unless it has received a time update.
+        //NOTE: at the turn of the century, the clock will not get updates from GPS
+        //for as many years as the value of PROGRAMMING_YEAR
+        if ( PROGRAMMING_YEAR <= ( ( (strDate[4] - '0') * 10 ) ) + (strDate[5] - '0') ) {
+          //Get the 'old' values of the time:
+          intOldHr = time_h;
+          intOldMin = time_m;
+          intOldSec = time_s;
+
+          //Change the time:
+          setgpstime(strTime);
+          //Change the date:
+          setgpsdate(strDate);
+
+	  //Gussy up the time and date, make the numbers come out right:
+          fix_time();
+
+          //Turn the two time values into minutes past midnight
+          uint16_t timeMinutes = ((time_h * 60) + (time_m));
+          uint16_t oldTimeMinutes = ((intOldHr * 60) + (intOldMin));
+
+          int8_t intTempHr = time_h;
+          int8_t intTempMin = time_m;
+
+          //If midnight happened between the old time and the new time
+          //and we did not just go back in time...
+          if ( ( 0 > (int16_t)( timeMinutes - oldTimeMinutes ) )
+               && ( (timeMinutes + 1440) >= oldTimeMinutes )
+               && ( abs( timeMinutes + 1440 - oldTimeMinutes ) < abs( timeMinutes - oldTimeMinutes ) ) ) {
+            timeMinutes += 1440;
+            intTempHr += 24;
+          }
+
+          if ( timeMinutes > oldTimeMinutes ) {
+
+            //Count backwards in time to the old time, checking the alarm for each minute.
+            for ( ; intTempHr >= intOldHr; intTempHr-- ) {
+              for ( ; intTempMin >= 0; intTempMin-- ) {
+                check_alarm( (uint8_t)intTempHr, (uint8_t)intTempMin, 0 );
+              }
+              intTempMin = 59;
+            }
+
+          }
+
+        }
+
+        //We've done what we needed to do, so start over.
+        memset( strBuffer, 0, BUFFERSIZE );
+        intBufferStatus = 0;
+        return;
+      }
+    }
+    //If nothing else was found, add to the buffer.
+    else {
+      strncat(strBuffer, &charReceived, 1);
+    }
+
+
+  }
+
+}
+
+//Set the time with a string taken from GPS data:
+void setgpstime(char* str) {
+  uint8_t intTempHr = 0;
+  uint8_t intTempMin = 0;
+  uint8_t intTempSec = 0;
+
+  intTempHr = (str[0] - '0') * 10;
+  intTempHr = intTempHr + (str[1] - '0');
+
+  intTempMin = (str[2] - '0') * 10;
+  intTempMin = intTempMin + (str[3] - '0');
+
+  intTempSec = (str[4] - '0') * 10;
+  intTempSec = intTempSec + (str[5] - '0');
+
+  time_h = intTempHr + intTimeZoneHour;
+
+  //If the time zone offset is negative, then subtract minutes
+  if ( 0 > intTimeZoneHour )
+    time_m = intTempMin - intTimeZoneMin;
+  else
+    time_m = intTempMin + intTimeZoneMin;
+
+  time_s = intTempSec;
+
+}
+
+//Set the date with a string taken from GPS data:
+void setgpsdate(char* str) {
+  uint8_t intTempDay = 0;
+  uint8_t intTempMon = 0;
+  uint8_t intTempYr = 0;
+
+  intTempDay = (str[0] - '0') * 10;
+  intTempDay = intTempDay + (str[1] - '0');
+
+  intTempMon = (str[2] - '0') * 10;
+  intTempMon = intTempMon + (str[3] - '0');
+
+  intTempYr = (str[4] - '0') * 10;
+  intTempYr = intTempYr + (str[5] - '0');
+
+  timeunknown = 0;
+  restored = 0;
+
+  date_d = intTempDay;
+  date_m = intTempMon;
+  date_y = intTempYr;
+
+}
+
+//Checks the alarm against the passed time.
+void check_alarm(uint8_t h, uint8_t m, uint8_t s) {
+
+  if (alarm_on && (alarm_h == h) && (alarm_m == m) && (0 == s)) {
+    DEBUGP("alarm on!");
+    alarming = 1;
+    snoozetimer = 0;
+  }
+
+}
+
+
+//Fixes the time variables whenever time is changed
+void fix_time(void) {
+
+    // a minute!
+  if (time_s >= 60) {
+    time_s = time_s - 60;
+    time_m++;
+    if(minutes_left>0)
+      minutes_left-=((dc_mode==DC_mode_sadistic)?4:1);
+  }
+  // If someone decides to make offset seconds with a negative number...
+  if (time_s < 0) {
+    time_s =  60 + time_s;
+    time_m--;
+	minutes_left+=((dc_mode==DC_mode_sadistic)?4:1);
+  }
+
+  // an hour...
+  if (time_m >= 60) {
+    time_m = time_m - 60;
+    time_h++; 
+    // let's write the time to the EEPROM
+    eeprom_write_byte((uint8_t *)EE_HOUR, time_h);
+    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+  }
+  // When offsets create negative minutes...
+  if (time_m < 0) {
+    time_m = 60 + time_m;
+    time_h--; 
+    eeprom_write_byte((uint8_t *)EE_HOUR, time_h);
+    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+  }
+
+  // a day....
+  if (time_h >= 24) {
+    time_h = time_h - 24;
+    date_d++;
+    eeprom_write_byte((uint8_t *)EE_DAY, date_d);
+  }
+  // When offsets create negative hours...
+  if (time_h < 0) {
+    time_h = 24 + time_h;
+    date_d--;
+    eeprom_write_byte((uint8_t *)EE_DAY, date_d);
+  }
+  
+  //if (! sleepmode) {
+  //  uart_putw_dec(time_h);
+  //  uart_putchar(':');
+  //  uart_putw_dec(time_m);
+  //  uart_putchar(':');
+  //  uart_putw_dec(time_s);
+  //  putstring_nl("");
+  //}
+  
+  day_in_month[2-1] = (leapyear(2000+date_y)?29:28);
+  // a full month!
+  // we check the leapyear and date to verify when it's time to roll over months
+  if (date_d > day_in_month[date_m-1]) {
+    date_d = 1;
+    date_m++;
+    eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+  }
+  // When offsets create negative days...
+  if (date_d < 1) {
+    //Find which month we are going back to:
+    /*
+    switch (date_m) {
+      case 1: //January -> December
+      case 2: //February -> January
+      case 4: //April -> March
+      case 6: //June -> May
+      case 8: //August -> July
+      case 9: //September -> August
+      case 11: //November -> October
+        date_d = 31 + date_d;
+        date_m--;
+        break;
+
+      case 5: //May -> April
+      case 7: //July -> June
+      case 10: //October -> September
+      case 12: //December -> November
+        date_d = 30 + date_d;
+        date_m--;
+        break;
+
+      case 3: //March -> February, the fun case
+        //If we are in a leapyear, February is 29 days long...
+        if ( leapyear(2000+date_y) )
+          date_d = 29 + date_d;
+        else //otherwise, it is 28 days long...
+          date_d = 28 + date_d;
+        date_m--;
+        break;
+      default:
+        date_d = 1;
+        break;
+    } */
+    date_m--;
+      //This takes away the years and is cheaper than any cream you can buy...
+    if (date_m < 1) {
+      date_m = 12 + date_m;
+      date_y--;
+      eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+      eeprom_write_byte((uint8_t *)EE_YEAR, date_y);
+    }
+    date_d = day_in_month[date_m-1] + date_d;
+    eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+  }
+  
+  // HAPPY NEW YEAR!
+  if (date_m >= 13) {
+    date_y++;
+    date_m = 1;
+    eeprom_write_byte((uint8_t *)EE_YEAR, date_y);
+  }
+
+}

@@ -1,6 +1,8 @@
 /***************************************************************************
- Ice Tube Clock firmware August 13, 2009
- (c) 2009 Limor Fried / Adafruit Industries
+ Ice Tube Clock with DeathClock and GPS firmware July 22, 2010
+ (c) 2010 Limor Fried / Adafruit Industries
+ GPS Capability added by Devlin Thyne
+ DeathClock added by Damien Good
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +29,8 @@ THE SOFTWARE.
 #define DEBUG 0
 #define DEBUGP(x)  if (DEBUG) {putstring_nl(x);}
 
+//The year the clock was programmed, used for error checking
+#define PROGRAMMING_YEAR 10
 
 #define REGION_US 0
 #define REGION_EU 1
@@ -35,6 +39,9 @@ THE SOFTWARE.
 #define DATE 0  // mm-dd-yy
 #define DAY 1   // thur jan 1
 #define YEAR 2  // mmddyyyy
+
+// String buffer size:
+#define BUFFERSIZE 128
 
 #define DISPLAYSIZE 9
 
@@ -47,38 +54,37 @@ THE SOFTWARE.
 #define BEEP_2KHZ 20
 #define BEEP_1KHZ 40
 
-#define EE_YEAR 1
-#define EE_MONTH 2
-#define EE_DAY 3
-#define EE_HOUR 4
-#define EE_MIN 5
-#define EE_SEC 6
-#define EE_ALARM_HOUR 7 
-#define EE_ALARM_MIN 8
-#define EE_BRIGHT 9
-#define EE_VOLUME 10
-#define EE_REGION 11
-#define EE_SNOOZE 12
-#define EE_DEATHCLOCK_ON 13
-#define EE_DOB_MONTH 14 //Death Clock variables are preserved in the event of an extended power outage.
-#define EE_DOB_DAY 15
-#define EE_DOB_YEAR 16
-#define EE_SET_MONTH 17
-#define EE_SET_DAY 18
-#define EE_SET_YEAR 19
-#define EE_GENDER 20
-#define EE_DC_MODE 21
-#define EE_BMI_UNIT 22
-#define EE_BMI_WEIGHT 23
-#define EE_BMI_HEIGHT 25
-#define EE_SMOKER 27
-#define EE_SET_HOUR 28
-#define EE_SET_MIN 29
-#define EE_SET_SEC 30
+#define EE_YEAR 			511
+#define EE_MONTH 			510
+#define EE_DAY 				509
+#define EE_HOUR 			508
+#define EE_MIN				507
+#define EE_SEC				506
+#define EE_ALARM_HOUR 		505
+#define EE_ALARM_MIN	 	504
+#define EE_BRIGHT 			503
+#define EE_VOLUME 			502
+#define EE_REGION 			501
+#define EE_SNOOZE 			500
+#define EE_DOB_MONTH 		499
+#define EE_DOB_DAY 			498
+#define EE_DOB_YEAR 		497
+#define EE_SET_MONTH 		496
+#define EE_SET_DAY 			495
+#define EE_SET_YEAR 		494
+#define EE_GENDER 			493
+#define EE_DC_MODE 			492
+#define EE_BMI_UNIT 		491
+#define EE_BMI_WEIGHT 		489
+#define EE_BMI_HEIGHT 		487
+#define EE_SMOKER 			486
+#define EE_SET_HOUR 		485
+#define EE_SET_MIN 			484
+#define EE_SET_SEC 			483
+#define EE_ZONE_HOUR 		482
+#define EE_ZONE_MIN 		481
 
 void delay(uint16_t delay);
-
-void (*app_start)(void) = 0x0000;
 
 void clock_init(void);
 void initbuttons(void);
@@ -93,6 +99,7 @@ void display_date(uint8_t style);
 #define display_str(x) display_str_rom(PSTR(x))
 void display_str_rom(const char *s);
 void display_alarm(uint8_t h, uint8_t m);
+void display_timezone(int8_t h, uint8_t m, uint8_t mode);
 
 void set_about(void);
 void set_time(void);
@@ -102,6 +109,15 @@ void set_brightness(void);
 void set_volume(void);
 void set_region(void);
 void set_snooze(void); // not activated by default
+
+//Checks the alarm against the passed time.
+void check_alarm(uint8_t h, uint8_t m, uint8_t s);
+
+//Fixes the time variables whenever time is changed
+void fix_time(void);
+
+//Set the time zone:
+void set_timezone(void);
 void set_deathclock(void);
 
 void beep(uint16_t freq, uint8_t times);
@@ -113,6 +129,12 @@ void setalarmstate(void);
 void setdisplay(uint8_t digit, uint8_t segments);
 void vfd_send(uint32_t d);
 void spi_xfer(uint8_t c);
+
+//GPS serial data handling functions:
+uint8_t gpsdataready(void);
+void getgpstime(void);
+void setgpstime(char* str);
+void setgpsdate(char* str);
 
 
 // displaymode
@@ -131,10 +153,11 @@ void spi_xfer(uint8_t c);
 #define SET_DEATHCLOCK 11
 #define SHOW_DEATHCLOCK 12
 #define SET_ABOUT 13
+#define SET_ZONE 14
 
 // sub-mode settings
 #define SHOW_MENU 0
-// alarm/time
+// alarm/time/zone
 #define SET_HOUR 1
 #define SET_MIN 2
 #define SET_SEC 3
@@ -208,3 +231,5 @@ void spi_xfer(uint8_t c);
 #define DIG_7 8
 #define DIG_8 7
 #define DIG_9 3
+
+#define nop asm("nop")

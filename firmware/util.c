@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <util/delay.h>
 #include <avr/pgmspace.h>
 #include "util.h"
+#include "iv.h"
 
 void delay_10us(uint8_t ns)
 {
@@ -154,3 +155,5 @@ void uart_putdw_dec(uint32_t dw)
         num /= 10;
     }
 }
+
+uint8_t day_in_month[12] = {31,28,31,30,31,30,31,31,30,31,30,31};

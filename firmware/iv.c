@@ -1,5 +1,5 @@
 /***************************************************************************
- Ice Tube Clock with DeathClock and GPS firmware July 22, 2010
+ Ice Tube Clock with DeathClock and GPS firmware August 16, 2010
  (c) 2010 Limor Fried / Adafruit Industries
  GPS Capability added by Devlin Thyne
  DeathClock added by Damien Good
@@ -43,7 +43,8 @@ uint8_t region = REGION_US;
 // These variables store the current time.
 volatile int8_t time_s, time_m, time_h;
 // ... and current date
-volatile int8_t date_m, date_d, date_y;
+volatile int8_t date_m, date_d;
+volatile int16_t date_y;
 // ... and death date
 volatile uint8_t death_m, death_d, death_y;
 
@@ -344,6 +345,7 @@ void calc_death_date(void)
 
 const char creditstr[] PROGMEM = "          " "deathtube.  debugging.  code optimization.  by caitsith2.  code jedi.  www.caitsith2.com"
 	                             "          " "icetube.  icetube hardware.  by ladyada.  simply the best."
+	                             "          " "gps code by devlin thyne."
 	                             "          " "adafruit industries. www.adafruit.com"
 	                             "          ";
 
@@ -364,15 +366,20 @@ void credits(void)
 	displaymode = last_displaymode;
 }
 
+uint8_t sadisticmode()
+{
+	return ((dc_mode == DC_mode_sadistic)?4:1);
+}
+
 void load_etd(void)
 {
   uint32_t result = load_raw_etd();
       result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
                            eeprom_read_byte((uint8_t *)EE_SET_DAY),
                            eeprom_read_byte((uint8_t *)EE_SET_YEAR)+1900,
-                           date_m,date_d,date_y+2000) * 1440l * ((dc_mode == DC_mode_sadistic)?4:1);
-  result -= (time_h * 60) * ((dc_mode == DC_mode_sadistic)?4:1);
-  result -= (time_m) * ((dc_mode == DC_mode_sadistic)?4:1);
+                           date_m,date_d,date_y+2000) * 1440l * sadisticmode();
+  result -= (time_h * 60) * sadisticmode();
+  result -= (time_m) * sadisticmode();
   minutes_left = (int32_t)result;
   calc_death_date();
   if(death_y < (date_y + 100))	//Bug fix for the rare cases where Minutes left is inadvertantly positive, when it should not be.
@@ -808,12 +815,10 @@ int main(void) {
 
 /**************************** SUB-MENUS *****************************/
 	
-void set_about(void)
+uint8_t check_timeout(void)
 {
-  timeoutcounter = INACTIVITYTIMEOUT;
-  while (1) {
-    if (just_pressed & 0x1) { // mode change
-      return;
+	if (just_pressed & 0x1) { // mode change
+      return 1;
     }
     if (just_pressed || pressed) {
       timeoutcounter = INACTIVITYTIMEOUT;  
@@ -821,8 +826,15 @@ void set_about(void)
     } else if (!timeoutcounter) {
       //timed out!
       displaymode = last_displaymode;     
-      return;
+      return 2;
     }
+    return 0;
+}
+	
+void set_about(void)
+{
+  timeoutcounter = INACTIVITYTIMEOUT;
+  while (!check_timeout()) {
     if (just_pressed & 0x6) {
       just_pressed = 0;
       credits();
@@ -846,22 +858,7 @@ void set_alarm(void)
   
   timeoutcounter = INACTIVITYTIMEOUT;
   
-  while (1) {
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;     
-      alarm_h = hour;
-      alarm_m = min;
-      eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);    
-      eeprom_write_byte((uint8_t *)EE_ALARM_MIN, alarm_m);    
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
@@ -895,6 +892,13 @@ void set_alarm(void)
 	delayms(75);
     }
   }
+  if(check_timeout() == 2)
+  {
+  	  alarm_h = hour;
+      alarm_m = min;
+      eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);
+      eeprom_write_byte((uint8_t *)EE_ALARM_MIN, alarm_m);
+  }
 }
 
 void set_time(void) 
@@ -909,18 +913,7 @@ void set_time(void)
 
   timeoutcounter = INACTIVITYTIMEOUT;
   
-  while (1) {
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;     
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
@@ -975,18 +968,7 @@ void set_date(void) {
 
   timeoutcounter = INACTIVITYTIMEOUT;;  
 
-  while (1) {
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;     
-      return;
-    }
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
 
       just_pressed = 0;
@@ -1054,18 +1036,7 @@ void set_timezone(void) {
   uint8_t mode = SHOW_MENU;
   timeoutcounter = INACTIVITYTIMEOUT;
 
-  while (1) {
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = SHOW_TIME;     
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
@@ -1126,19 +1097,7 @@ void set_brightness(void) {
   timeoutcounter = INACTIVITYTIMEOUT;;  
   brightness = eeprom_read_byte((uint8_t *)EE_BRIGHT);
 
-  while (1) {
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;     
-      eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
-      return;
-    }
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
 
       just_pressed = 0;
@@ -1164,6 +1123,8 @@ void set_brightness(void) {
       }
     }
   }
+  if(check_timeout() == 2)
+  	  eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
 }
 
 //display[1] = (numbertable[(date_m / 10)]);
@@ -1283,18 +1244,7 @@ void set_deathclock(void) {
   bmi_weight = eeprom_read_word((uint16_t *)EE_BMI_WEIGHT);
   bmi_height = eeprom_read_word((uint16_t *)EE_BMI_HEIGHT);
 
-  while (1) {
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;
-      return;
-    }
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
 
       just_pressed = 0;
@@ -1488,18 +1438,7 @@ void set_volume(void) {
   timeoutcounter = INACTIVITYTIMEOUT;;  
   volume = eeprom_read_byte((uint8_t *)EE_VOLUME);
 
-  while (1) {
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;     
-      return;
-    }
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
@@ -1541,18 +1480,7 @@ void set_region(void) {
   timeoutcounter = INACTIVITYTIMEOUT;;  
   region = eeprom_read_byte((uint8_t *)EE_REGION);
 
-  while (1) {
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;     
-      return;
-    }
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
       just_pressed = 0;
       if (mode == SHOW_MENU) {
@@ -1585,18 +1513,7 @@ void set_snooze(void) {
   timeoutcounter = INACTIVITYTIMEOUT;;  
   snooze = eeprom_read_byte((uint8_t *)EE_SNOOZE);
 
-  while (1) {
-    if (just_pressed || pressed) {
-      timeoutcounter = INACTIVITYTIMEOUT;;  
-      // timeout w/no buttons pressed after 3 seconds?
-    } else if (!timeoutcounter) {
-      //timed out!
-      displaymode = last_displaymode;     
-      return;
-    }
-    if (just_pressed & 0x1) { // mode change
-      return;
-    }
+  while (!check_timeout()) {
     if (just_pressed & 0x2) {
 
       just_pressed = 0;
@@ -2016,9 +1933,9 @@ void display_alarm(uint8_t h, uint8_t m){
   {
     uint32_t result = minutes_left;
     if((time_h > h) || ((time_h == h) && (time_m > m)) || ((time_h == h) && (time_m == m) && (time_s > 0)))
-      result -= (((((h * 60) + m) + 1440) - ((time_h * 60) + time_m)) * ((dc_mode == DC_mode_sadistic)?4:1));
+      result -= (((((h * 60) + m) + 1440) - ((time_h * 60) + time_m)) * sadisticmode());
     else
-      result -= ((((h * 60) + m) - ((time_h * 60) + time_m)) * ((dc_mode == DC_mode_sadistic)?4:1));
+      result -= ((((h * 60) + m) - ((time_h * 60) + time_m)) * sadisticmode());
     display_etd(result);
     return;
   }
@@ -2355,13 +2272,13 @@ void fix_time(void) {
     time_s = time_s - 60;
     time_m++;
     if(minutes_left>0)
-      minutes_left-=((dc_mode==DC_mode_sadistic)?4:1);
+      minutes_left-=sadisticmode();
   }
   // If someone decides to make offset seconds with a negative number...
   if (time_s < 0) {
     time_s =  60 + time_s;
     time_m--;
-	minutes_left+=((dc_mode==DC_mode_sadistic)?4:1);
+	minutes_left+=sadisticmode();
   }
 
   // an hour...

@@ -1,5 +1,5 @@
 /***************************************************************************
- Ice Tube Clock with DeathClock and GPS firmware July 22, 2010
+ Ice Tube Clock with DeathClock and GPS firmware August 16, 2010
  (c) 2010 Limor Fried / Adafruit Industries
  GPS Capability added by Devlin Thyne
  DeathClock added by Damien Good

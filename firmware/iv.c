@@ -38,6 +38,29 @@ void (*app_start)(void) = 0x0000;
 #include "fonttable.h"
 #include "deathclock.h"
 
+uint8_t eeprom_data[32], old_eeprom_data[32];
+
+uint8_t init_eeprom_data[32] PROGMEM = {
+		10, 1, 1, 	//year, month, day
+		0, 0, 0,  	//hours, minutes, seconds
+		8, 0,     	//alarm hour, alarm minute
+		50,		 	//brightness
+		1,			//volume
+		REGION_US,	//region
+		10,			//Snooze time in minutes
+		1, 1, 0,	//Date of birth month, day, year
+		DC_gender_male,	//Gender
+		DC_mode_normal, //Death Clock Mode
+		BMI_Imperial,   //Body Mass Index entry mode
+		35,0,			//BMI weight.
+		36,0,			//BMI height
+		DC_non_smoker,	//smoking status
+		8, 16, 10,		//Set month/day/year for deathclock.
+		6, 10, 25,		//Set hour:min:sec for deathclock.
+		-8, 0,			//Time zone setting
+		EE_INITIALIZED	//Should be obvious.
+	};
+
 uint8_t region = REGION_US;
 
 // These variables store the current time.
@@ -119,11 +142,36 @@ void delayms(uint16_t ms) {
   while (milliseconds < ms);
 }
 
+void write_eeprom(void)
+{
+	for (uint8_t i=0;i<32;i++)
+		if(eeprom_data[i] != old_eeprom_data[i])
+		{
+			eeprom_write_byte((uint8_t *)EE_BASE - i, eeprom_data[i]);
+			old_eeprom_data[i] = eeprom_data[i];
+		}
+}
+
+void read_eeprom(void)
+{
+	uint8_t i;
+	
+	//write_eeprom();	//So if settings have changed, they are saved.
+	for (i=0;i<32;i++)
+		old_eeprom_data[i] = eeprom_data[i] = eeprom_read_byte((uint8_t *)EE_BASE - i);
+	if(eeprom_data[EE_INIT] != EE_INITIALIZED)
+	{
+		for(i=0;i<32;i++)
+			eeprom_data[i] = pgm_read_byte(&init_eeprom_data[i]);
+		write_eeprom();
+	}
+}
+
 // When the alarm is going off, pressing a button turns on snooze mode
 // this sets the snoozetimer off in MAXSNOOZE seconds - which turns on
 // the alarm again
 void setsnooze(void) {
-  //snoozetimer = eeprom_read_byte((uint8_t *)EE_SNOOZE);
+  //snoozetimer = eeprom_data[EE_SNOOZE];
   //snoozetimer *= 60; // convert minutes to seconds
   snoozetimer = MAXSNOOZE;
   DEBUGP("snooze");
@@ -298,30 +346,41 @@ SIGNAL(SIG_PIN_CHANGE0) {
 volatile int32_t minutes_left=0;
 volatile uint8_t dc_mode;
 
+uint16_t read_word(uint8_t address)
+{
+	return eeprom_data[address] | (eeprom_data[address+1]<<8);
+}
+
+void write_word(uint8_t address, uint16_t data)
+{
+	eeprom_data[address] = data & 0xFF;
+	eeprom_data[address+1] = data >> 8;
+}
+
 uint32_t load_raw_etd(void)
 {
-  dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
-  return ETD(  eeprom_read_byte((uint8_t *)EE_DOB_MONTH),
-                              eeprom_read_byte((uint8_t *)EE_DOB_DAY),
-                              eeprom_read_byte((uint8_t *)EE_DOB_YEAR)+1900,
-                              eeprom_read_byte((uint8_t *)EE_SET_MONTH),
-                              eeprom_read_byte((uint8_t *)EE_SET_DAY),
-                              eeprom_read_byte((uint8_t *)EE_SET_YEAR)+1900,
-                              eeprom_read_byte((uint8_t *)EE_GENDER),
+  dc_mode = eeprom_data[EE_DC_MODE];
+  return ETD(  eeprom_data[EE_DOB_MONTH],
+                              eeprom_data[EE_DOB_DAY],
+                              eeprom_data[EE_DOB_YEAR]+1900,
+                              eeprom_data[EE_SET_MONTH],
+                              eeprom_data[EE_SET_DAY],
+                              eeprom_data[EE_SET_YEAR]+1900,
+                              eeprom_data[EE_GENDER],
                               dc_mode,
-                              BodyMassIndex( eeprom_read_byte((uint8_t *)EE_BMI_UNIT), eeprom_read_word((uint16_t *)EE_BMI_HEIGHT), eeprom_read_word((uint16_t *)EE_BMI_WEIGHT)),
-                              eeprom_read_byte((uint8_t *)EE_SMOKER),
-                              eeprom_read_byte((uint8_t *)EE_SET_HOUR),
-                              eeprom_read_byte((uint8_t *)EE_SET_MIN),
-                              eeprom_read_byte((uint8_t *)EE_SET_SEC));
+                              BodyMassIndex( eeprom_data[EE_BMI_UNIT], read_word(EE_BMI_HEIGHT), read_word(EE_BMI_WEIGHT)),
+                              eeprom_data[EE_SMOKER],
+                              eeprom_data[EE_SET_HOUR],
+                              eeprom_data[EE_SET_MIN],
+                              eeprom_data[EE_SET_SEC]);
 }
 
 void calc_death_date(void)
 {
 	uint32_t timeleft;
-	death_m = eeprom_read_byte((uint8_t *)EE_SET_MONTH);
-	death_d = eeprom_read_byte((uint8_t *)EE_SET_DAY);
-	death_y = eeprom_read_byte((uint8_t *)EE_SET_YEAR);
+	death_m = eeprom_data[EE_SET_MONTH];
+	death_d = eeprom_data[EE_SET_DAY];
+	death_y = eeprom_data[EE_SET_YEAR];
 	timeleft = load_raw_etd();
 	
 	while (timeleft >= 1440)
@@ -366,7 +425,7 @@ void credits(void)
 	displaymode = last_displaymode;
 }
 
-uint8_t sadisticmode()
+uint8_t sadisticmode(void)
 {
 	return ((dc_mode == DC_mode_sadistic)?4:1);
 }
@@ -374,9 +433,9 @@ uint8_t sadisticmode()
 void load_etd(void)
 {
   uint32_t result = load_raw_etd();
-      result -= date_diff( eeprom_read_byte((uint8_t *)EE_SET_MONTH),
-                           eeprom_read_byte((uint8_t *)EE_SET_DAY),
-                           eeprom_read_byte((uint8_t *)EE_SET_YEAR)+1900,
+      result -= date_diff( eeprom_data[EE_SET_MONTH],
+                           eeprom_data[EE_SET_DAY],
+                           eeprom_data[EE_SET_YEAR]+1900,
                            date_m,date_d,date_y+2000) * 1440l * sadisticmode();
   result -= (time_h * 60) * sadisticmode();
   result -= (time_m) * sadisticmode();
@@ -479,6 +538,7 @@ SIGNAL(SIG_INTERRUPT0) {
 
 SIGNAL(SIG_COMPARATOR) {
   //DEBUGP("COMP");
+  uint8_t i=0;
   if (ACSR & _BV(ACO)) {
     //DEBUGP("HIGH");
     if (!sleepmode) {
@@ -487,26 +547,35 @@ SIGNAL(SIG_COMPARATOR) {
       BOOST_PORT &= ~_BV(BOOST); // pull boost fet low
       SPCR  &= ~_BV(SPE); // turn off spi
       if (restored) {
-	eeprom_write_byte((uint8_t *)EE_MIN, time_m);
-	eeprom_write_byte((uint8_t *)EE_SEC, time_s);
+	//eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+	//eeprom_write_byte((uint8_t *)EE_SEC, time_s);
+	eeprom_data[EE_MIN] = time_m;
+	eeprom_data[EE_SEC] = time_s;
       }
       DEBUGP("z");
       TCCR0B = 0; // no boost
       volume = 0; // low power buzzer
       PCICR = 0;  // ignore buttons
 
-      app_start();
+      i=1;
     }
   } else {
     //DEBUGP("LOW");
     if (sleepmode) {
       if (restored) {
-	eeprom_write_byte((uint8_t *)EE_MIN, time_m);
-	eeprom_write_byte((uint8_t *)EE_SEC, time_s);
+	//;eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+	//eeprom_write_byte((uint8_t *)EE_SEC, time_s);
+	eeprom_data[EE_MIN] = time_m;
+	eeprom_data[EE_SEC] = time_s;
       }
       DEBUGP("WAKERESET"); 
-      app_start();
+      i=1;
     }
+  }
+  if(i)
+  {
+  	write_eeprom();
+  	app_start();
   }
 }
 /*********************** Main app **********/
@@ -574,7 +643,7 @@ void gotosleep(void) {
    initbuttons();
 
    // turn on boost
-   boost_init(eeprom_read_byte((uint8_t *)EE_BRIGHT));
+   boost_init(eeprom_data[EE_BRIGHT]);
 
    // turn on vfd control
    vfd_init();
@@ -582,7 +651,7 @@ void gotosleep(void) {
    // turn on display
    VFDSWITCH_PORT &= ~_BV(VFDSWITCH); 
    VFDBLANK_PORT &= ~_BV(VFDBLANK);
-   volume = eeprom_read_byte((uint8_t *)EE_VOLUME); // reset
+   volume = eeprom_data[EE_VOLUME]; // reset
    
    speaker_init();
 
@@ -634,6 +703,7 @@ int main(void) {
   //WDTCSR = _BV(WDE);
   wdt_enable(WDTO_2S);
   kickthedog();
+  read_eeprom();
 
   // we lost power at some point so lets alert the user
   // that the time may be wrong (the clock still works)
@@ -685,19 +755,19 @@ int main(void) {
     vfd_init();
     
     DEBUGP("boost init");
-    boost_init(eeprom_read_byte((uint8_t *)EE_BRIGHT));
+    boost_init(eeprom_data[EE_BRIGHT]);
     sei();
 
     //Load and check the timezone information
-    intTimeZoneHour = eeprom_read_byte((uint8_t *)EE_ZONE_HOUR);
+    intTimeZoneHour = eeprom_data[EE_ZONE_HOUR];
     if ( ( 12 < intTimeZoneHour ) || ( -12 > intTimeZoneHour ) )
       intTimeZoneHour = 0;
 
-    intTimeZoneMin = eeprom_read_byte((uint8_t *)EE_ZONE_MIN);
+    intTimeZoneMin = eeprom_data[EE_ZONE_MIN];
     if ( ( 60 < intTimeZoneMin ) || ( 0 > intTimeZoneMin ) )
       intTimeZoneMin = 0;
 
-    region = eeprom_read_byte((uint8_t *)EE_REGION);
+    region = eeprom_data[EE_REGION];
     
     DEBUGP("speaker init");
     speaker_init();
@@ -828,6 +898,8 @@ uint8_t check_timeout(void)
       displaymode = last_displaymode;     
       return 2;
     }
+    if(just_pressed & 2)
+    	write_eeprom();
     return 0;
 }
 	
@@ -868,12 +940,8 @@ void set_alarm(void)
 	mode = SET_MIN;
       } else {
 	// done!
-	alarm_h = hour;
-	alarm_m = min;
-	eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);    
-	eeprom_write_byte((uint8_t *)EE_ALARM_MIN, alarm_m);    
     displaymode = last_displaymode;
-	return;
+	break;
       }
       display_time(hour,min,60,mode);
     }
@@ -892,12 +960,11 @@ void set_alarm(void)
 	delayms(75);
     }
   }
-  if(check_timeout() == 2)
+  if(check_timeout() != 1)
   {
-  	  alarm_h = hour;
-      alarm_m = min;
-      eeprom_write_byte((uint8_t *)EE_ALARM_HOUR, alarm_h);
-      eeprom_write_byte((uint8_t *)EE_ALARM_MIN, alarm_m);
+  	  eeprom_data[EE_HOUR] = alarm_h = hour;
+      eeprom_data[EE_MIN] = alarm_m = min;
+      write_eeprom();
   }
 }
 
@@ -943,17 +1010,18 @@ void set_time(void)
       if (mode == SET_HOUR) {
 	hour = (hour+1) % 24;
 	time_h = hour;
-	eeprom_write_byte((uint8_t *)EE_HOUR, time_h);    
+	eeprom_data[EE_HOUR] = hour;
       }
       if (mode == SET_MIN) {
 	min = (min+1) % 60;
-	eeprom_write_byte((uint8_t *)EE_MIN, time_m);
 	time_m = min;
+	eeprom_data[EE_MIN] = min;
       }
       if ((mode == SET_SEC) ) {
 	sec = (sec+1) % 60;
 	time_s = sec;
       }
+      write_eeprom();
       display_time(hour, min, sec, mode);
       if (pressed & 0x4)
 	delayms(75);
@@ -1006,20 +1074,24 @@ void set_date(void) {
 	date_m++;
 	if (date_m >= 13)
 	  date_m = 1;
-	eeprom_write_byte((uint8_t *)EE_MONTH, date_m);    
+	eeprom_data[EE_MONTH] = date_m;
+	//eeprom_write_byte((uint8_t *)EE_MONTH, date_m);    
       }
       if (mode == SET_DAY) {
 	date_d++;
 	if (date_d > 31)
 	  date_d = 1;
-
-	eeprom_write_byte((uint8_t *)EE_DAY, date_d);    
+	
+	eeprom_data[EE_DAY] = date_d;
+	//eeprom_write_byte((uint8_t *)EE_DAY, date_d);    
       }
       if (mode == SET_YEAR) {
 	date_y++;
 	date_y %= 100;
-	eeprom_write_byte((uint8_t *)EE_YEAR, date_y);    
+	eeprom_data[EE_YEAR] = date_y;
+	//eeprom_write_byte((uint8_t *)EE_YEAR, date_y);    
       }
+      write_eeprom();
       display_md(1,date_m,date_d,date_y);
       display_date_set(DATE,mode);
 
@@ -1057,7 +1129,8 @@ void set_timezone(void) {
       if (mode == SET_HOUR) {
 	hour = ( ( hour + 1 + 12 ) % 25 ) - 12;
         intTimeZoneHour = hour;
-	eeprom_write_byte((uint8_t *)EE_ZONE_HOUR, hour);
+    eeprom_data[EE_ZONE_HOUR] = hour;
+	//eeprom_write_byte((uint8_t *)EE_ZONE_HOUR, hour);
 	//Debugging:
 	//uart_puts("\n\rTimezone offset hour:\t");
 	//uart_putw_dec(hour);
@@ -1065,8 +1138,10 @@ void set_timezone(void) {
       if (mode == SET_MIN) {
 	min = ( min + 1 ) % 60;
         intTimeZoneMin = min;
-	eeprom_write_byte((uint8_t *)EE_ZONE_MIN, min);
+    eeprom_data[EE_ZONE_MIN] = min;
+	//eeprom_write_byte((uint8_t *)EE_ZONE_MIN, min);
       }
+      write_eeprom();
       display_timezone(hour, min, mode);
       if (pressed & 0x4)
 	delayms(75);
@@ -1095,7 +1170,7 @@ void set_brightness(void) {
   uint8_t brightness;
 
   timeoutcounter = INACTIVITYTIMEOUT;;  
-  brightness = eeprom_read_byte((uint8_t *)EE_BRIGHT);
+  brightness = eeprom_data[EE_BRIGHT];
 
   while (!check_timeout()) {
     if (just_pressed & 0x2) {
@@ -1108,8 +1183,7 @@ void set_brightness(void) {
     display_brightness(brightness);
       } else {	
     displaymode = last_displaymode;
-	eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
-	return;
+	break;
       }
     }
     if ((just_pressed & 0x4) || (pressed & 0x4)) {
@@ -1123,8 +1197,12 @@ void set_brightness(void) {
       }
     }
   }
-  if(check_timeout() == 2)
-  	  eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
+  if(check_timeout() != 1)
+  {
+  	  //eeprom_write_byte((uint8_t *)EE_BRIGHT, brightness);
+  	  eeprom_data[EE_BRIGHT] = brightness;
+  	  write_eeprom();
+  }
 }
 
 //display[1] = (numbertable[(date_m / 10)]);
@@ -1232,17 +1310,18 @@ void set_deathclock(void) {
   uint8_t mode = SHOW_MENU;
   timeoutcounter = INACTIVITYTIMEOUT;;  
   uint8_t day, month, year;
+  uint8_t changed=0;
   
   
-  gender = eeprom_read_byte((uint8_t *)EE_GENDER);
-  set_dc_mode = eeprom_read_byte((uint8_t *)EE_DC_MODE);
-  day = eeprom_read_byte((uint8_t *)EE_DOB_DAY);
-  month = eeprom_read_byte((uint8_t *)EE_DOB_MONTH);
-  year = eeprom_read_byte((uint8_t *)EE_DOB_YEAR);
-  bmi_unit = eeprom_read_byte((uint8_t *)EE_BMI_UNIT);
-  smoker = eeprom_read_byte((uint8_t *)EE_SMOKER);
-  bmi_weight = eeprom_read_word((uint16_t *)EE_BMI_WEIGHT);
-  bmi_height = eeprom_read_word((uint16_t *)EE_BMI_HEIGHT);
+  gender = eeprom_data[EE_GENDER];
+  set_dc_mode = eeprom_data[EE_DC_MODE];
+  day = eeprom_data[EE_DOB_DAY];
+  month = eeprom_data[EE_DOB_MONTH];
+  year = eeprom_data[EE_DOB_YEAR];
+  bmi_unit = eeprom_data[EE_BMI_UNIT];
+  smoker = eeprom_data[EE_SMOKER];
+  bmi_weight = read_word(EE_BMI_WEIGHT);
+  bmi_height = read_word(EE_BMI_HEIGHT);
 
   while (!check_timeout()) {
     if (just_pressed & 0x2) {
@@ -1279,30 +1358,12 @@ void set_deathclock(void) {
     //We now calculate Estimated Time of Death, and display it, in minutes left to live format.
     /*displaymode = NONE;
     display_date(DATE);*/
-    
-    uint8_t ee_set_year = date_y + 100;
-	uint8_t max_year_diff[4][2] = {{72,78},{57,63},{82,88},{35,38}};
-	
-	if(((date_y + 100)-year)>max_year_diff[set_dc_mode][gender]) ee_set_year = year + max_year_diff[set_dc_mode][gender];
-    
     displaymode = NONE;
-    uint32_t result = ETD(month, day, year+1900, date_m, date_d, ee_set_year + 1900, gender, set_dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker, time_h, time_m, time_s );
+    //uint32_t result = ETD(month, day, year+1900, date_m, date_d, ee_set_year + 1900, gender, set_dc_mode, BodyMassIndex(bmi_unit, bmi_height, bmi_weight), smoker, time_h, time_m, time_s );
     dc_mode = set_dc_mode;
     
-    
-    
-    eeprom_write_byte((uint8_t*)EE_SET_DAY,date_d);
-    eeprom_write_byte((uint8_t*)EE_SET_MONTH,date_m);
-    eeprom_write_byte((uint8_t*)EE_SET_YEAR,ee_set_year);
-    eeprom_write_byte((uint8_t*)EE_SET_MIN,time_m);
-    eeprom_write_byte((uint8_t*)EE_SET_HOUR,time_h);
-    eeprom_write_byte((uint8_t*)EE_SET_SEC,time_s);
-    //result /= 60;
-    /*result -= (time_h * 60);
-    result -= (time_m);
-    minutes_left = result;*/
     load_etd();
-    result = minutes_left;
+	uint32_t result = minutes_left;
     display_etd(result);
     delayms(1500);
     displaymode = last_displaymode;
@@ -1319,18 +1380,24 @@ void set_deathclock(void) {
     month++;
     if (month >= 13)
       month = 1;
-    eeprom_write_byte((uint8_t *)EE_DOB_MONTH, month);    
+    //eeprom_write_byte((uint8_t *)EE_DOB_MONTH, month);
+    eeprom_data[EE_DOB_MONTH] = month;
+    changed = 1;
       }
       if (mode == SET_DAY) {
     day++;
     if (day > 31)
       day = 1;
-    eeprom_write_byte((uint8_t *)EE_DOB_DAY, day);    
+    //eeprom_write_byte((uint8_t *)EE_DOB_DAY, day);    
+    eeprom_data[EE_DOB_DAY] = day;
+    changed = 1;
       }
       if (mode == SET_YEAR) {
     year++;
     year %= 200;
-    eeprom_write_byte((uint8_t *)EE_DOB_YEAR, year);    
+    //eeprom_write_byte((uint8_t *)EE_DOB_YEAR, year);    
+    eeprom_data[EE_DOB_YEAR] = year;
+    changed = 1;
       }
       if(mode<=SET_YEAR)
       	display_md(0,month,day,year);
@@ -1338,13 +1405,17 @@ void set_deathclock(void) {
     if (mode == SET_GENDER)
     {
       gender = !gender;
-      eeprom_write_byte((uint8_t *)EE_GENDER, gender);
+      //eeprom_write_byte((uint8_t *)EE_GENDER, gender);
+      eeprom_data[EE_GENDER] = gender;
+      changed = 1;
     }
     if (mode == SET_DC_MODE)
     {
       set_dc_mode++;
       set_dc_mode %= 4;
-      eeprom_write_byte((uint8_t *)EE_DC_MODE, set_dc_mode);
+      //eeprom_write_byte((uint8_t *)EE_DC_MODE, set_dc_mode);
+      eeprom_data[EE_DC_MODE] = set_dc_mode;
+      changed = 1;
     }
     if (mode == SET_BMI_UNIT)
     {
@@ -1364,7 +1435,15 @@ void set_deathclock(void) {
       {
         bmi_weight = 0;
       }
-      eeprom_write_byte((uint8_t *)EE_BMI_UNIT, bmi_unit);
+      //eeprom_write_byte((uint8_t *)EE_BMI_UNIT, bmi_unit);
+      eeprom_data[EE_BMI_UNIT] = bmi_unit;
+      write_word(EE_BMI_WEIGHT,bmi_weight);
+      write_word(EE_BMI_HEIGHT,bmi_height);
+      //eeprom_data[EE_BMI_WEIGHT] = bmi_weight & 0xFF;
+      //eeprom_data[EE_BMI_WEIGHT+1] = bmi_weight >> 8;
+      //eeprom_data[EE_BMI_HEIGHT] = bmi_height & 0xFF;
+      //eeprom_data[EE_BMI_HEIGHT+1] = bmi_height >> 8;
+      changed = 1;
     }
     if (mode == SET_BMI_WEIGHT)
     {
@@ -1385,7 +1464,11 @@ void set_deathclock(void) {
         bmi_weight++;
         bmi_weight %= 256;
       }
-      eeprom_write_word((uint16_t *)EE_BMI_WEIGHT, bmi_weight);
+      //eeprom_write_word((uint16_t *)EE_BMI_WEIGHT, bmi_weight);
+      //eeprom_data[EE_BMI_WEIGHT] = bmi_weight & 0xFF;
+      //eeprom_data[EE_BMI_WEIGHT+1] = bmi_weight >> 8;
+      write_word(EE_BMI_WEIGHT,bmi_weight);
+      changed = 1;
     }
     if (mode == SET_BMI_HEIGHT)
     {
@@ -1401,18 +1484,46 @@ void set_deathclock(void) {
         if(bmi_height > 305)
           bmi_height = 92;
       }
-      eeprom_write_word((uint16_t *)EE_BMI_HEIGHT, bmi_height);
+      //eeprom_write_word((uint16_t *)EE_BMI_HEIGHT, bmi_height);
+      //eeprom_data[EE_BMI_HEIGHT] = bmi_height & 0xFF;
+      //eeprom_data[EE_BMI_HEIGHT+1] = bmi_height >> 8;
+      write_word(EE_BMI_HEIGHT,bmi_height);
+      changed = 1;
     }
     if (mode == SET_SMOKER)
     {
       smoker = !smoker;
-      eeprom_write_byte((uint8_t*)EE_SMOKER, smoker);
+      //eeprom_write_byte((uint8_t*)EE_SMOKER, smoker);
+      eeprom_data[EE_SMOKER] = smoker;
+      changed = 1;
     }
-    display_set_dc(mode);
-
     if (pressed & 0x4)
       delayms(60);
+    } 
+    if(changed)
+    {
+    	changed = 0;
+    	uint8_t ee_set_year = date_y + 100;
+	    uint8_t max_year_diff[4][2] = {{72,78},{57,63},{82,88},{35,38}};
+	    if(((date_y + 100)-year)>max_year_diff[set_dc_mode][gender]) ee_set_year = year + max_year_diff[set_dc_mode][gender];
+    	eeprom_data[EE_SET_DAY] = date_d;
+    	eeprom_data[EE_SET_MONTH] = date_m;
+    	eeprom_data[EE_SET_YEAR] = ee_set_year;
+    	eeprom_data[EE_SET_HOUR] = time_h;
+    	eeprom_data[EE_SET_MIN] = time_m;
+    	eeprom_data[EE_SET_SEC] = time_s;
+    	write_eeprom();
+    	display_set_dc(mode);
+    	//eeprom_write_byte((uint8_t*)EE_SET_DAY,date_d);
+	    //eeprom_write_byte((uint8_t*)EE_SET_MONTH,date_m);
+	    //eeprom_write_byte((uint8_t*)EE_SET_YEAR,ee_set_year);
+	    //eeprom_write_byte((uint8_t*)EE_SET_MIN,time_m);
+	    //eeprom_write_byte((uint8_t*)EE_SET_HOUR,time_h);
+	    //eeprom_write_byte((uint8_t*)EE_SET_SEC,time_s); 
     }
+    
+
+    
   }
   
   return;
@@ -1436,7 +1547,7 @@ void set_volume(void) {
   uint8_t volume;
 
   timeoutcounter = INACTIVITYTIMEOUT;;  
-  volume = eeprom_read_byte((uint8_t *)EE_VOLUME);
+  volume = eeprom_data[EE_VOLUME];
 
   while (!check_timeout()) {
     if (just_pressed & 0x2) {
@@ -1456,7 +1567,9 @@ void set_volume(void) {
       if (mode == SET_VOL) {
 	volume = !volume;
     display_volume(volume);
-	eeprom_write_byte((uint8_t *)EE_VOLUME, volume);
+	//eeprom_write_byte((uint8_t *)EE_VOLUME, volume);
+	eeprom_data[EE_VOLUME] = volume;
+	write_eeprom();
 	speaker_init();
 	beep(4000, 1);
       }
@@ -1478,7 +1591,7 @@ void set_region(void) {
   uint8_t mode = SHOW_MENU;
 
   timeoutcounter = INACTIVITYTIMEOUT;;  
-  region = eeprom_read_byte((uint8_t *)EE_REGION);
+  region = eeprom_data[EE_REGION];
 
   while (!check_timeout()) {
     if (just_pressed & 0x2) {
@@ -1498,7 +1611,9 @@ void set_region(void) {
       if (mode == SET_REG) {
 	region = !region;
     display_region();
-	eeprom_write_byte((uint8_t *)EE_REGION, region);
+	//eeprom_write_byte((uint8_t *)EE_REGION, region);
+	eeprom_data[EE_REGION] = region;
+	write_eeprom();
       }
     }
   }
@@ -1511,7 +1626,7 @@ void set_snooze(void) {
   uint8_t snooze;
 
   timeoutcounter = INACTIVITYTIMEOUT;;  
-  snooze = eeprom_read_byte((uint8_t *)EE_SNOOZE);
+  snooze = eeprom_data[EE_SNOOZE];
 
   while (!check_timeout()) {
     if (just_pressed & 0x2) {
@@ -1539,7 +1654,9 @@ void set_snooze(void) {
     print_number(snooze,1);
     display[1] |= 0x1;
     display[2] |= 0x1;
-	eeprom_write_byte((uint8_t *)EE_SNOOZE, snooze);
+	//eeprom_write_byte((uint8_t *)EE_SNOOZE, snooze);
+	eeprom_data[EE_SNOOZE] = snooze;
+	write_eeprom();
       }
 
       if (pressed & 0x4)
@@ -1555,9 +1672,9 @@ void set_snooze(void) {
 void clock_init(void) {
   // we store the time in EEPROM when switching from power modes so its
   // reasonable to start with whats in memory
-  time_h = eeprom_read_byte((uint8_t *)EE_HOUR) % 24;
-  time_m = eeprom_read_byte((uint8_t *)EE_MIN) % 60;
-  time_s = eeprom_read_byte((uint8_t *)EE_SEC) % 60;
+  time_h = eeprom_data[EE_HOUR] % 24;
+  time_m = eeprom_data[EE_MIN] % 60;
+  time_s = eeprom_data[EE_SEC] % 60;
 
   /*
     // if you're debugging, having the makefile set the right
@@ -1568,12 +1685,12 @@ void clock_init(void) {
   */
 
   // Set up the stored alarm time and date
-  alarm_m = eeprom_read_byte((uint8_t *)EE_ALARM_MIN) % 60;
-  alarm_h = eeprom_read_byte((uint8_t *)EE_ALARM_HOUR) % 24;
+  alarm_m = eeprom_data[EE_ALARM_MIN] % 60;
+  alarm_h = eeprom_data[EE_ALARM_HOUR] % 24;
 
-  date_y = eeprom_read_byte((uint8_t *)EE_YEAR) % 100;
-  date_m = eeprom_read_byte((uint8_t *)EE_MONTH) % 13;
-  date_d = eeprom_read_byte((uint8_t *)EE_DAY) % 32;
+  date_y = eeprom_data[EE_YEAR] % 100;
+  date_m = eeprom_data[EE_MONTH] % 13;
+  date_d = eeprom_data[EE_DAY] % 32;
 
   restored = 1;
 
@@ -1640,7 +1757,7 @@ uint8_t leapyear(uint16_t y) {
 void speaker_init(void) {
 
   // read the preferences for high/low volume
-  volume = eeprom_read_byte((uint8_t *)EE_VOLUME);
+  volume = eeprom_data[EE_VOLUME];
 
   // We use the built-in fast PWM, 8 bit timer
   PORTB |= _BV(SPK1) | _BV(SPK2); 
@@ -2286,28 +2403,34 @@ void fix_time(void) {
     time_m = time_m - 60;
     time_h++; 
     // let's write the time to the EEPROM
-    eeprom_write_byte((uint8_t *)EE_HOUR, time_h);
-    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+    //eeprom_write_byte((uint8_t *)EE_HOUR, time_h);
+    //eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+    eeprom_data[EE_HOUR] = time_h;
+    eeprom_data[EE_MIN] = time_m;
   }
   // When offsets create negative minutes...
   if (time_m < 0) {
     time_m = 60 + time_m;
     time_h--; 
-    eeprom_write_byte((uint8_t *)EE_HOUR, time_h);
-    eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+    //eeprom_write_byte((uint8_t *)EE_HOUR, time_h);
+    //eeprom_write_byte((uint8_t *)EE_MIN, time_m);
+    eeprom_data[EE_HOUR] = time_h;
+    eeprom_data[EE_MIN] = time_m;
   }
 
   // a day....
   if (time_h >= 24) {
     time_h = time_h - 24;
     date_d++;
-    eeprom_write_byte((uint8_t *)EE_DAY, date_d);
+    //eeprom_write_byte((uint8_t *)EE_DAY, date_d);
+    eeprom_data[EE_DAY] = date_d;
   }
   // When offsets create negative hours...
   if (time_h < 0) {
     time_h = 24 + time_h;
     date_d--;
-    eeprom_write_byte((uint8_t *)EE_DAY, date_d);
+    //eeprom_write_byte((uint8_t *)EE_DAY, date_d);
+    eeprom_data[EE_DAY] = date_d;
   }
   
   //if (! sleepmode) {
@@ -2325,7 +2448,9 @@ void fix_time(void) {
   if (date_d > day_in_month[date_m-1]) {
     date_d = 1;
     date_m++;
-    eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+    //eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+    eeprom_data[EE_MONTH] = date_m;
+    eeprom_data[EE_DAY] = date_d;
   }
   // When offsets create negative days...
   if (date_d < 1) {
@@ -2368,18 +2493,23 @@ void fix_time(void) {
     if (date_m < 1) {
       date_m = 12 + date_m;
       date_y--;
-      eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
-      eeprom_write_byte((uint8_t *)EE_YEAR, date_y);
+      //eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+      //eeprom_write_byte((uint8_t *)EE_YEAR, date_y);
     }
     date_d = day_in_month[date_m-1] + date_d;
-    eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+    //eeprom_write_byte((uint8_t *)EE_MONTH, date_m);
+    eeprom_data[EE_DAY] = date_d;
+    eeprom_data[EE_MONTH] = date_m;
+    eeprom_data[EE_YEAR] = date_y;
   }
   
   // HAPPY NEW YEAR!
   if (date_m >= 13) {
     date_y++;
     date_m = 1;
-    eeprom_write_byte((uint8_t *)EE_YEAR, date_y);
+    //eeprom_write_byte((uint8_t *)EE_YEAR, date_y);
+    eeprom_data[EE_MONTH] = date_m;
+    eeprom_data[EE_YEAR] = date_y;
   }
-
+  write_eeprom();
 }

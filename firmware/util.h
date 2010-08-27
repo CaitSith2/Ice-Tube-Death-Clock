@@ -36,7 +36,7 @@ THE SOFTWARE.
 #define NOP nop
 #define uart_putc(c) uart_putchar(c)
 
-void delay_ms(unsigned char ms);
+void delay_ms(uint16_t ms);
 void delay_10us(uint8_t us);
 void delay_s(uint8_t s);
 
@@ -57,6 +57,7 @@ void uart_puts(const char* str);
 
 void RAM_putstring(char *str);
 void ROM_putstring(const char *str, uint8_t nl);
+
 
 #define putstring(x) ROM_putstring(PSTR(x), 0)
 #define putstring_nl(x) ROM_putstring(PSTR(x), 1)

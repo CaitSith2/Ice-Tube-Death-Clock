@@ -635,7 +635,7 @@ void gotosleep(void) {
    sleepmode = 0;
    // plugged in
    // wait to verify
-   _delay_ms(20);
+   delay_ms(20);
    if (ACSR & _BV(ACO)) 
      return;
    
@@ -725,7 +725,7 @@ int main(void) {
   //DEBUGP("turning on anacomp");
   // set up analog comparator
   ACSR = _BV(ACBG) | _BV(ACIE); // use bandgap, intr. on toggle!
-  _delay_ms(1);
+  delay_ms(1);
   // settle!
   if (ACSR & _BV(ACO)) {
     // hmm we should not interrupt here
@@ -782,7 +782,7 @@ int main(void) {
   }
   DEBUGP("done");
   while (1) {
-    //_delay_ms(100);
+    //delay_ms(100);
     kickthedog();
     //uart_putc_hex(ACSR);
     if (ACSR & _BV(ACO)) {
@@ -1804,11 +1804,11 @@ void beep(uint16_t freq, uint8_t times) {
   while (times--) {
     TCCR1B |= _BV(CS11); // turn it on!
     // beeps are 200ms long on
-    _delay_ms(200);
+    delay_ms(200);
     TCCR1B &= ~_BV(CS11); // turn it off!
     PORTB &= ~_BV(SPK1) & ~_BV(SPK2);
     // beeps are 200ms long off
-    _delay_ms(200);
+    delay_ms(200);
   }
   // turn speaker off
   PORTB &= ~_BV(SPK1) & ~_BV(SPK2);
